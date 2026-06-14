@@ -1215,7 +1215,12 @@ async function startServer() {
 
         if (wsPort && !isNaN(wsPort) && wsPort !== 3000) {
           const localWsUrl = `ws://127.0.0.1:${wsPort}${wsPath}`;
-          const localWs = new WebSocket(localWsUrl, {
+          
+          // Extract subprotocol from request headers if present
+          const protocols = req.headers['sec-websocket-protocol'];
+          const protocolArray = protocols ? (Array.isArray(protocols) ? protocols : protocols.split(',').map(p => p.trim())) : undefined;
+          
+          const localWs = new WebSocket(localWsUrl, protocolArray, {
             headers: {
               ...req.headers,
               host: `127.0.0.1:${wsPort}`
