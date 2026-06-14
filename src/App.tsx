@@ -25,6 +25,10 @@ import { TerminalUI } from "./components/TerminalUI";
 import { BrowserPreview } from "./components/BrowserPreview";
 import { GitUI } from "./components/GitUI";
 import { PortManager } from "./components/PortManager";
+import { DatabaseManager } from "./components/DatabaseManager";
+import { DebuggerPanel } from "./components/DebuggerPanel";
+import { PackageManager } from "./components/PackageManager";
+import { AIBuilder } from "./components/AIBuilder";
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(() => {
@@ -142,9 +146,113 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<"chat" | "ide">("chat");
   const [ideTab, setIdeTab] = useState<
-    "editor" | "browser" | "terminal" | "search" | "git"
+    "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder"
   >("editor");
   const [isDiffMode, setIsDiffMode] = useState(false);
+  
+  const completionProviderRef = useRef<any[] | null>(null);
+
+  const handleEditorMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    
+    if (monaco && !completionProviderRef.current) {
+      const langs = ["javascript", "typescript", "html", "css", "python", "json", "markdown"];
+      const providers: any[] = [];
+      
+      langs.forEach((lang) => {
+        const provider = monaco.languages.registerInlineCompletionsProvider(lang, {
+          provideInlineCompletions: async (model: any, position: any, context: any, token: any) => {
+            if (!settings.enableAutocomplete) {
+              return { items: [] };
+            }
+            
+            const textBefore = model.getValueInRange({
+              startLineNumber: Math.max(1, position.lineNumber - 30),
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            });
+            
+            const textAfter = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: position.column,
+              endLineNumber: Math.min(model.getLineCount(), position.lineNumber + 30),
+              endColumn: 1,
+            });
+
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            if (token.isCancellationRequested) {
+              return { items: [] };
+            }
+
+            try {
+              const systemPrompt = "You are a code autocompletion assistant. Complete the code at the cursor. Return ONLY the code completion to be inserted at the cursor position. Do not wrap the output in markdown code blocks. Keep it concise, fitting the exact indent and context. Do not write explanation.";
+              const prompt = `Code Before Cursor:
+${textBefore}
+Code After Cursor:
+${textAfter}
+
+Complete the next characters/lines starting exactly from the cursor:`;
+
+              const geminiModel = settings.geminiModel || "gemini-2.5-flash";
+              const clientApiKey = settings.geminiApiKey || "";
+
+              const payload = {
+                systemInstruction: {
+                  role: "user",
+                  parts: [{ text: systemPrompt }],
+                },
+                contents: [
+                  {
+                    role: "user",
+                    parts: [{ text: prompt }],
+                  },
+                ],
+              };
+
+              const res = await fetch("/api/gemini/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: geminiModel,
+                  payload,
+                  clientApiKey,
+                }),
+              });
+
+              if (!res.ok) return { items: [] };
+              const data = await res.json();
+              let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+              
+              text = text.replace(/^```[a-z]*\n/i, "").replace(/```$/, "");
+              
+              if (!text) return { items: [] };
+
+              return {
+                items: [
+                  {
+                    insertText: text,
+                    range: new monaco.Range(
+                      position.lineNumber,
+                      position.column,
+                      position.lineNumber,
+                      position.column
+                    ),
+                  },
+                ],
+              };
+            } catch (e) {
+              console.error("Autocomplete failed:", e);
+              return { items: [] };
+            }
+          },
+          freeInlineCompletions: () => {},
+        });
+        providers.push(provider);
+      });
+      completionProviderRef.current = providers;
+    }
+  };
   const {
     tree,
     fetchTree,
@@ -533,6 +641,30 @@ export default function App() {
                 >
                   Git
                 </button>
+                <button
+                  onClick={() => setIdeTab("db")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${ideTab === "db" ? "bg-[#2a2a32] text-emerald-400 shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+                >
+                  Database
+                </button>
+                <button
+                  onClick={() => setIdeTab("debugger")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${ideTab === "debugger" ? "bg-[#2a2a32] text-emerald-400 shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+                >
+                  Debugger
+                </button>
+                <button
+                  onClick={() => setIdeTab("package")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${ideTab === "package" ? "bg-[#2a2a32] text-emerald-400 shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+                >
+                  Packages
+                </button>
+                <button
+                  onClick={() => setIdeTab("builder")}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${ideTab === "builder" ? "bg-[#2a2a32] text-emerald-400 shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-white/5"}`}
+                >
+                  UI Builder
+                </button>
               </div>
               {ideTab === "editor" && selectedFile && (
                 <div className="flex items-center gap-2 shrink-0">
@@ -633,8 +765,8 @@ export default function App() {
                           wordWrap: "on",
                         }}
                         onChange={(v) => setFileContent(v || "")}
-                        onMount={(editor) => {
-                          editorRef.current = editor;
+                        onMount={(editor, monaco) => {
+                          handleEditorMount(editor, monaco);
                         }}
                       />
                     )
@@ -670,16 +802,46 @@ export default function App() {
 
               {/* Search Tab */}
               <div className={`flex-1 flex overflow-hidden ${ideTab === "search" ? "" : "hidden"}`}>
-                <SearchUI
-                  workspaceId={workspaceId}
-                  onOpen={(p, line) => {
-                    openFile(p);
-                    setIdeTab("editor");
-                    if (line) {
-                      setTargetLine(line);
-                    }
-                  }}
-                />
+                {ideTab === "search" && (
+                  <SearchUI
+                    workspaceId={workspaceId}
+                    onOpen={(p, line) => {
+                      openFile(p);
+                      setIdeTab("editor");
+                      if (line) {
+                        setTargetLine(line);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Database Tab */}
+              <div className={`flex-1 flex overflow-hidden ${ideTab === "db" ? "" : "hidden"}`}>
+                {ideTab === "db" && (
+                  <DatabaseManager workspaceId={workspaceId} />
+                )}
+              </div>
+
+              {/* Debugger Tab */}
+              <div className={`flex-1 flex overflow-hidden ${ideTab === "debugger" ? "" : "hidden"}`}>
+                {ideTab === "debugger" && (
+                  <DebuggerPanel workspaceId={workspaceId} />
+                )}
+              </div>
+
+              {/* Package Manager Tab */}
+              <div className={`flex-1 flex overflow-hidden ${ideTab === "package" ? "" : "hidden"}`}>
+                {ideTab === "package" && (
+                  <PackageManager workspaceId={workspaceId} />
+                )}
+              </div>
+
+              {/* AI UI Builder Tab */}
+              <div className={`flex-1 flex overflow-hidden ${ideTab === "builder" ? "" : "hidden"}`}>
+                {ideTab === "builder" && (
+                  <AIBuilder workspaceId={workspaceId} onRefreshWorkspace={fetchTree} />
+                )}
               </div>
             </div>
           </div>

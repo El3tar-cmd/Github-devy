@@ -1396,6 +1396,284 @@ app.get('/api/workspaces', async (req, res) => {
   }
 });
 
+// --- DATABASE MANAGER API ---
+// Endpoint to list sqlite database files in workspace
+app.post('/api/db/list', async (req, res) => {
+  try {
+    const { workspaceId } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+    
+    // Recursive search for sqlite db files
+    async function findDbs(dir: string): Promise<string[]> {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      let results: string[] = [];
+      const ignored = ['.git', 'node_modules', 'dist', 'build', '.cache', '.npm', '.chromium-profile'];
+      for (const entry of entries) {
+        if (ignored.includes(entry.name)) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          results = results.concat(await findDbs(full));
+        } else {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (['.db', '.sqlite', '.sqlite3', '.db3'].includes(ext)) {
+            const rel = path.relative(wDir, full).replace(/\\/g, '/');
+            results.push(rel);
+          }
+        }
+      }
+      return results;
+    }
+    
+    const dbs = await findDbs(wDir);
+    res.json({ success: true, databases: dbs });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to run query via python sqlite3 wrapper
+app.post('/api/db/query', async (req, res) => {
+  try {
+    const { workspaceId, dbPath, query } = req.body;
+    if (!dbPath || !query) {
+      return res.status(400).json({ error: 'dbPath and query are required' });
+    }
+    
+    const { resolved } = await safePath(workspaceId, dbPath);
+    
+    // Python script to execute and output JSON
+    const pythonScript = `
+import sqlite3, json, sys
+try:
+    conn = sqlite3.connect(sys.argv[1])
+    cursor = conn.cursor()
+    cursor.execute(sys.argv[2])
+    if cursor.description:
+        colnames = [d[0] for d in cursor.description]
+        rows = cursor.fetchall()
+        result = []
+        for row in rows:
+            row_dict = {}
+            for col, val in zip(colnames, row):
+                if isinstance(val, bytes):
+                    row_dict[col] = val.decode('utf-8', errors='ignore')
+                else:
+                    row_dict[col] = val
+            result.append(row_dict)
+        print(json.dumps({"success": True, "type": "select", "columns": colnames, "rows": result}))
+    else:
+        conn.commit()
+        print(json.dumps({"success": True, "type": "write", "affectedRows": cursor.rowcount, "lastInsertRowid": cursor.lastrowid}))
+except Exception as e:
+    print(json.dumps({"success": False, "error": str(e)}))
+`;
+
+    const child = spawn('python3', ['-c', pythonScript, resolved, query]);
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+    
+    child.on('close', (code) => {
+      if (code !== 0 && !stdout) {
+        return res.status(500).json({ error: stderr || `Python process exited with code ${code}` });
+      }
+      try {
+        const parsed = JSON.parse(stdout.trim());
+        res.json(parsed);
+      } catch (err: any) {
+        res.status(500).json({ error: `Failed to parse Python JSON output: ${stdout}\nStderr: ${stderr}` });
+      }
+    });
+    
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint to list tables in a database
+app.post('/api/db/tables', async (req, res) => {
+  try {
+    const { workspaceId, dbPath } = req.body;
+    if (!dbPath) return res.status(400).json({ error: 'dbPath required' });
+    const { resolved } = await safePath(workspaceId, dbPath);
+    
+    const query = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';";
+    const pythonScript = `
+import sqlite3, json, sys
+try:
+    conn = sqlite3.connect(sys.argv[1])
+    cursor = conn.cursor()
+    cursor.execute(sys.argv[2])
+    rows = cursor.fetchall()
+    tables = [r[0] for r in rows]
+    print(json.dumps({"success": True, "tables": tables}))
+except Exception as e:
+    print(json.dumps({"success": False, "error": str(e)}))
+`;
+    const child = spawn('python3', ['-c', pythonScript, resolved, query]);
+    let stdout = '';
+    child.stdout.on('data', (data) => { stdout += data.toString(); });
+    child.on('close', () => {
+      try {
+        res.json(JSON.parse(stdout.trim()));
+      } catch {
+        res.status(500).json({ error: 'Failed to list tables' });
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- INTERACTIVE DEBUGGER API ---
+interface DebugSession {
+  id: string;
+  command: string;
+  logs: string[];
+  status: 'running' | 'exited' | 'failed';
+  exitCode?: number;
+  pid?: number;
+}
+const debugSessions = new Map<string, DebugSession>();
+let debugSessionCounter = 0;
+
+app.post('/api/debug/start', async (req, res) => {
+  try {
+    const { workspaceId, command } = req.body;
+    if (!command) return res.status(400).json({ error: 'command required' });
+    
+    const { wDir } = await safePath(workspaceId, '.');
+    const sessionId = `dbg_${Date.now()}_${++debugSessionCounter}`;
+    
+    let selectedShell: string | boolean = true;
+    if (existsSync('/bin/bash')) {
+      selectedShell = '/bin/bash';
+    } else if (existsSync('/bin/sh')) {
+      selectedShell = '/bin/sh';
+    }
+
+    const child = spawn(command, {
+      shell: selectedShell,
+      cwd: wDir,
+      env: {
+        ...process.env,
+        PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        FORCE_COLOR: '1'
+      }
+    });
+    
+    const session: DebugSession = {
+      id: sessionId,
+      command,
+      logs: [],
+      status: 'running',
+      pid: child.pid
+    };
+    debugSessions.set(sessionId, session);
+    
+    const appendLog = (data: any) => {
+      const str = data.toString();
+      session.logs.push(str);
+      if (session.logs.length > 5000) {
+        session.logs.shift();
+      }
+    };
+    
+    child.stdout.on('data', appendLog);
+    child.stderr.on('data', appendLog);
+    
+    child.on('close', (code) => {
+      session.status = code === 0 ? 'exited' : 'failed';
+      session.exitCode = code ?? undefined;
+    });
+    
+    child.on('error', (err) => {
+      session.status = 'failed';
+      session.logs.push(`Process Error: ${err.message}\n`);
+    });
+    
+    res.json({ success: true, sessionId, pid: child.pid });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/debug/logs', (req, res) => {
+  const { sessionId } = req.body;
+  const session = debugSessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  res.json({
+    status: session.status,
+    exitCode: session.exitCode,
+    logs: session.logs.join('')
+  });
+});
+
+app.post('/api/debug/kill', (req, res) => {
+  const { sessionId } = req.body;
+  const session = debugSessions.get(sessionId);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  
+  if (session.status === 'running' && session.pid) {
+    try {
+      process.kill(-session.pid);
+    } catch {
+      try {
+        process.kill(session.pid);
+      } catch (_) {}
+    }
+    session.status = 'exited';
+    session.logs.push('\n[Process killed by user]\n');
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/debug/sessions', (req, res) => {
+  const list = Array.from(debugSessions.values()).map(s => ({
+    id: s.id,
+    command: s.command,
+    status: s.status,
+    exitCode: s.exitCode,
+    pid: s.pid
+  }));
+  res.json({ success: true, sessions: list });
+});
+
+// --- PACKAGE MANAGER API ---
+app.post('/api/package/list', async (req, res) => {
+  try {
+    const { workspaceId } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+    const pkgPath = path.join(wDir, 'package.json');
+    
+    try {
+      await fs.access(pkgPath);
+    } catch {
+      return res.json({ success: true, hasPackageJson: false, dependencies: {}, devDependencies: {} });
+    }
+    
+    const content = await fs.readFile(pkgPath, 'utf8');
+    const parsed = JSON.parse(content);
+    res.json({
+      success: true,
+      hasPackageJson: true,
+      name: parsed.name || 'unnamed',
+      version: parsed.version || '1.0.0',
+      dependencies: parsed.dependencies || {},
+      devDependencies: parsed.devDependencies || {}
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/fs/list', async (req, res) => {
   try {
     const { path: dirPath = '.', workspaceId } = req.body;

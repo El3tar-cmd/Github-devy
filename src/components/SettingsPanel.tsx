@@ -156,6 +156,19 @@ export function SettingsPanel({
             </div>
           </div>
         )}
+        {/* AI Autocomplete Toggle */}
+        <div className="flex items-center justify-between bg-[#15151a] p-4 rounded-xl border border-white/5">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-medium text-white">AI Autocomplete</span>
+            <span className="text-[10px] text-slate-500">Ghost text inline completions</span>
+          </div>
+          <button
+            onClick={() => setSettings({ ...settings, enableAutocomplete: !settings.enableAutocomplete })}
+            className={`w-11 h-6 rounded-full transition-all relative ${settings.enableAutocomplete ? "bg-emerald-500" : "bg-[#2a2a32]"}`}
+          >
+            <div className={`w-4 h-4 bg-[#09090b] rounded-full absolute top-1 transition-all ${settings.enableAutocomplete ? "left-6" : "left-1"}`} />
+          </button>
+        </div>
 
         <hr className="border-white/10" />
 

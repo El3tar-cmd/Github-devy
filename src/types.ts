@@ -25,6 +25,7 @@ export interface Settings {
   repoUrl: string;
   githubToken: string;
   systemPrompt: string;
+  enableAutocomplete: boolean;
 }
 
 export const defaultSystemPrompt = `You are an advanced, senior Autonomous AI Developer Agent operating within a highly capable Workspace Environment. 
@@ -63,6 +64,7 @@ export const defaultSettings: Settings = {
   repoUrl: "",
   githubToken: "",
   systemPrompt: defaultSystemPrompt,
+  enableAutocomplete: true,
 };
 
 export interface ChatSession {
