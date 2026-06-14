@@ -370,7 +370,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <Terminal className="w-5 h-5 text-emerald-500" />
               <h1 className="font-semibold text-white tracking-tight hidden sm:block">
-                Agent<span className="text-emerald-500 font-bold">CLI</span>
+                Github-<span className="text-emerald-500 font-bold">devy</span>
               </h1>
             </div>
           </div>
