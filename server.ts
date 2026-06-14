@@ -9,7 +9,6 @@ import path from 'path';
 import * as cheerio from 'cheerio';
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
-import AdmZip from 'adm-zip';
 
 const execAsync = promisify(exec);
 
@@ -715,6 +714,8 @@ app.get('/api/workspace/export-zip', async (req, res) => {
     }
     const { wDir } = await safePath(workspaceId, '.');
 
+    // Dynamically import adm-zip to prevent issues
+    const AdmZip = (await import('adm-zip')).default;
     const zip = new AdmZip();
 
     async function addFolderToZip(currentPath: string, relativePath: string = '') {
@@ -774,6 +775,7 @@ app.post('/api/workspace/import-zip', async (req, res) => {
 
     // Decode zip
     const zipBuffer = Buffer.from(zipBase64, 'base64');
+    const AdmZip = (await import('adm-zip')).default;
     const zip = new AdmZip(zipBuffer);
     const zipEntries = zip.getEntries();
 
