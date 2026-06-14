@@ -19,10 +19,21 @@ export function TerminalUI({ workspaceId }: Props) {
   const [isWsOpen, setIsWsOpen] = useState(false);
   
   // Custom enhanced states for dual-fallback rendering
-  const [viewMode, setViewMode] = useState<'interactive' | 'logs'>('logs'); // Default to logs which is 100% mobile-friendly
-  const [executionMode, setExecutionMode] = useState<'http' | 'ws'>('http'); // Default to HTTP which is bulletproof
+  const [viewMode, setViewMode] = useState<'interactive' | 'logs'>('interactive'); // Default to interactive bash
+  const [executionMode, setExecutionMode] = useState<'http' | 'ws'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('terminal_execution_mode');
+      return (saved === 'http' || saved === 'ws') ? saved : 'ws';
+    }
+    return 'ws';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('terminal_execution_mode', executionMode);
+  }, [executionMode]);
+
   const [logContent, setLogContent] = useState<string>(
-    '=== HTTP Terminal Stream Logs ===\r\nType your commands in the helper input box below and click "Run".\r\nOutputs will stream here in real-time, working instantly on mobile and desktop.\r\n\r\n'
+    '=== Terminal Stream Logs ===\r\nType your commands in the helper input box below or type directly on the black xterm canvas.\r\nOutputs will stream here in real-time and will be buffered on the server so switching tabs won\'t clear them.\r\n\r\n'
   );
 
   const runCommandHttp = async (cmdToRun: string) => {
@@ -73,7 +84,13 @@ export function TerminalUI({ workspaceId }: Props) {
           // Standard UNIX \n needs to be mapped to \r\n for xterm/plain display
           const formatted = text.replace(/(?<!\r)\n/g, '\r\n');
           
-          setLogContent(prev => prev + formatted);
+          setLogContent(prev => {
+            const next = prev + formatted;
+            if (next.length > 50000) {
+              return '...[Logs truncated to save memory]...\r\n' + next.slice(-40000);
+            }
+            return next;
+          });
           if (term) {
             term.write(formatted);
           }
@@ -185,45 +202,62 @@ export function TerminalUI({ workspaceId }: Props) {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
+    let ws: WebSocket | null = null;
     let wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProto}//${window.location.host}?workspaceId=${workspaceId}`;
     
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setIsWsOpen(true);
-      term.writeln('\x1b[32m[Terminal Connected (WebSocket Mode)]\x1b[0m');
-    };
-
-    ws.onmessage = (event) => {
-      const appendText = (text: string) => {
-        term.write(text);
-        setLogContent(prev => prev + text);
+      ws.onopen = () => {
+        setIsWsOpen(true);
+        term.writeln('\x1b[32m[Terminal Connected (WebSocket Mode)]\x1b[0m');
       };
 
-      if (typeof event.data === 'string') {
-        appendText(event.data);
-      } else {
-        event.data.text().then((txt: string) => appendText(txt));
-      }
-    };
+      ws.onmessage = (event) => {
+        const appendText = (text: string) => {
+          term.write(text);
+          setLogContent(prev => {
+            const next = prev + text;
+            if (next.length > 50000) {
+              return '...[Logs truncated to save memory]...\r\n' + next.slice(-40000);
+            }
+            return next;
+          });
+        };
 
-    ws.onerror = () => {
+        if (typeof event.data === 'string') {
+          appendText(event.data);
+        } else if (event.data && typeof event.data.text === 'function') {
+          event.data.text().then((txt: string) => appendText(txt));
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.warn('Terminal WS client experienced an error:', e);
+        setIsWsOpen(false);
+        term.writeln('\r\n\x1b[33m[WebSocket Error - Fallback to HTTP Tunnel active]\x1b[0m');
+      };
+
+      ws.onclose = (e) => {
+        console.log('Terminal WS client closed:', e);
+        setIsWsOpen(false);
+        term.writeln('\r\n\x1b[33m[Disconnected - Fallback to HTTP Tunnel Mode available]\x1b[0m');
+      };
+
+      term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN && executionMode === 'ws') {
+          ws.send(data);
+        }
+      });
+    } catch (wsErr: any) {
+      console.error('Failed to initialize terminal WebSocket client:', wsErr);
       setIsWsOpen(false);
-      term.writeln('\r\n\x1b[33m[WebSocket Offline - Entering HTTP Tunnel Mode]\x1b[0m');
-    };
-
-    ws.onclose = () => {
-      setIsWsOpen(false);
-      term.writeln('\r\n\x1b[33m[Disconnected - Fallback to HTTP Tunnel Mode available]\x1b[0m');
-    };
-
-    term.onData(data => {
-      if (ws.readyState === WebSocket.OPEN && executionMode === 'ws') {
-        ws.send(data);
-      }
-    });
+      term.writeln(`\r\n\x1b[31m[WebSocket connection blocked/failed: ${wsErr.message}]\x1b[0m`);
+      term.writeln('\x1b[33m[Falling back to HTTP Direct Mode automatically]\x1b[0m');
+      setExecutionMode('http');
+    }
 
     const handleResize = () => {
       if (!xtermRef.current) return;
@@ -234,8 +268,22 @@ export function TerminalUI({ workspaceId }: Props) {
     return () => {
       clearTimeout(fitTimer);
       window.removeEventListener('resize', handleResize);
-      ws.close();
-      term.dispose();
+      
+      if (ws) {
+        // Nullify all event handlers to prevent them from firing after component unmount / terminal disposal
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        
+        try {
+          ws.close();
+        } catch (_) {}
+      }
+      
+      try {
+        term.dispose();
+      } catch (_) {}
     };
   }, [workspaceId, executionMode]);
 
@@ -411,7 +459,7 @@ export function TerminalUI({ workspaceId }: Props) {
             </button>
           </form>
           <p className="text-[10px] text-slate-500 leading-normal">
-            * Standard commands execute through our stable HTTP stream tunnel instantly. Toggle <span className="text-slate-300 font-mono font-bold">Stream Logs</span> view to copy logs and avoid mobile focus issues.
+            * يعمل الطرفية (Terminal) عبر **WebSocket مستمر**. أي تطبيق تشغله هنا (مثل <code>npm run start</code>) يستمر في العمل في الخلفية حتى لو أغلقت اللوحة أو تنقلت بين الأقسام، وسيتم استعراض المخرجات فور العودة.
           </p>
         </div>
     </div>

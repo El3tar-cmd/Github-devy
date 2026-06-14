@@ -57,12 +57,13 @@ export function BrowserPreview() {
       return trimmed;
     }
 
-    // 4. Default: convert standard localhost references manually
-    if (trimmed.toLowerCase().includes('localhost') || trimmed.toLowerCase().includes('127.0.0.1')) {
-      const findPort = trimmed.match(/:(\d+)/);
-      if (findPort) {
-        return `/proxy/${findPort[1]}/`;
-      }
+    // 4. Robust Port Extraction Fallback: If there is any colon followed by a port number anywhere, extract it!
+    const anyPortMatch = trimmed.match(/:(\d+)/);
+    if (anyPortMatch) {
+      const port = anyPortMatch[1];
+      const afterPortMatch = trimmed.match(new RegExp(`:${port}(.*)`));
+      const subpath = (afterPortMatch && afterPortMatch[1]) || '/';
+      return `/proxy/${port}${subpath}`;
     }
 
     return trimmed;

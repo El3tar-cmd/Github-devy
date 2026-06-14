@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import * as cheerio from 'cheerio';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 
 const execAsync = promisify(exec);
@@ -42,6 +42,115 @@ const isIdeRoute = (url: string) => {
          url === '/api/workspaces';
 };
 
+function rewriteHtmlForProxy(html: string, port: number): string {
+  try {
+    const $ = cheerio.load(html);
+
+    // 1. Ensure base href pointing to proxy subpath
+    $('base').remove();
+    const baseTag = `<base href="/proxy/${port}/" />`;
+    if ($('head').length > 0) {
+      $('head').prepend(baseTag);
+    } else {
+      $('html').prepend(`<head>${baseTag}</head>`);
+    }
+
+    // 2. Rewrite attributes that reference absolute paths
+    const attributesToRewrite = ['src', 'href', 'action', 'poster'];
+    for (const attr of attributesToRewrite) {
+      $(`[${attr}]`).each((_, el) => {
+        let val = $(el).attr(attr);
+        if (val && val.startsWith('/') && !val.startsWith('//') && !val.startsWith(`/proxy/${port}`)) {
+          $(el).attr(attr, `/proxy/${port}${val}`);
+        }
+      });
+    }
+
+    // 3. Inject client-side path and API intercepter helper script
+    const clientScript = `
+    <!-- DEV_SITE_PROXY HELPER -->
+    <script id="proxy-client-helper">
+      (function() {
+        // Intercept client-side routing state changes
+        const originalPushState = history.pushState;
+        const originalReplaceState = history.replaceState;
+        
+        history.pushState = function(state, unused, url) {
+          if (url && typeof url === 'string') {
+            if (url.startsWith('/') && !url.startsWith('/proxy/')) {
+              url = '/proxy/${port}' + url;
+            }
+          }
+          return originalPushState.call(history, state, unused, url);
+        };
+        
+        history.replaceState = function(state, unused, url) {
+          if (url && typeof url === 'string') {
+            if (url.startsWith('/') && !url.startsWith('/proxy/')) {
+              url = '/proxy/${port}' + url;
+            }
+          }
+          return originalReplaceState.call(history, state, unused, url);
+        };
+
+        // Intercept XMLHttpRequest
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, ...args) {
+          if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/proxy/')) {
+            url = '/proxy/${port}' + url;
+          }
+          return originalOpen.call(this, method, url, ...args);
+        };
+
+        // Intercept Fetch API calls
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+          if (typeof input === 'string') {
+            if (input.startsWith('/') && !input.startsWith('/proxy/')) {
+              input = '/proxy/${port}' + input;
+            }
+          } else if (input instanceof Request) {
+            const url = input.url;
+            const origin = window.location.origin;
+            if (url.startsWith(origin) && !url.includes('/proxy/')) {
+              const path = url.substring(origin.length);
+              if (path.startsWith('/') && !path.startsWith('/proxy/')) {
+                const newUrl = origin + '/proxy/${port}' + path;
+                input = new Request(newUrl, input);
+              }
+            }
+          }
+          return originalFetch.call(window, input, init);
+        };
+
+        // Register Service Worker for robust absolute asset proxying
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/proxy-sw.js').then(function(reg) {
+            console.log('Service Worker registered with scope:', reg.scope);
+            if (reg.active && !navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          }).catch(function(err) {
+            console.error('Service Worker registration failed:', err);
+          });
+        }
+      })();
+    </script>
+    `;
+
+    if ($('head').length > 0) {
+      $('head').append(clientScript);
+    } else {
+      $('html').append(clientScript);
+    }
+
+    return $.html();
+  } catch (err) {
+    console.error('Error rewriting HTML for proxy:', err);
+    return html;
+  }
+}
+
 // 1. Relative Asset Proxy Catcher Middleware
 app.use((req, res, next) => {
   if (req.url.startsWith('/proxy') || isIdeRoute(req.url)) {
@@ -52,46 +161,40 @@ app.use((req, res, next) => {
   
   // Try extracting local port from referer
   const referer = req.headers.referer;
+  let refererHasProxy = false;
   if (referer) {
     const match = referer.match(/\/proxy\/(\d+)/);
     if (match) {
       portStr = match[1];
+      refererHasProxy = true;
     }
   }
 
   // Safe Fallback to cookie
-  // We ONLY fallback to cookie if there is NO referer or if the referer is indeed a proxied page.
-  // We MUST NEVER fallback to cookie for paths belonging to the main IDE (lest we hijack IDE's own assets and break the UI).
   if (!portStr && req.headers.cookie) {
-    const hasReferer = !!referer;
-    const refererHasProxy = referer && referer.includes('/proxy/');
+    const isIdeAsset = req.url === '/' ||
+                       req.url.startsWith('/index.html') ||
+                       req.url.startsWith('/src/') ||
+                       req.url.startsWith('/node_modules/') ||
+                       req.url.startsWith('/@id/') ||
+                       req.url.startsWith('/@vite/') ||
+                       req.url.startsWith('/@fs/') ||
+                       req.url.startsWith('/@react-refresh') ||
+                       req.url.includes('vite.svg');
     
-    // If there is a referer, but it doesn't have /proxy/, it is from the main IDE itself. Do not proxy!
-    if (!hasReferer || refererHasProxy) {
-      // Avoid hijacking the root, index, and Vite/HMR asset folders of the main IDE
-      const isIdeAsset = req.url === '/' ||
-                         req.url.startsWith('/index.html') ||
-                         req.url.startsWith('/src/') ||
-                         req.url.startsWith('/node_modules/') ||
-                         req.url.startsWith('/@id/') ||
-                         req.url.startsWith('/@vite/') ||
-                         req.url.startsWith('/@fs/') ||
-                         req.url.startsWith('/@react-refresh') ||
-                         req.url.includes('vite.svg');
-      
-      if (!isIdeAsset) {
-        const match = req.headers.cookie.match(/last_proxy_port=(\d+)/);
-        if (match) {
-          portStr = match[1];
-        }
+    const hasReferer = !!referer;
+    if (!isIdeAsset && (!hasReferer || refererHasProxy || (referer && referer.includes('/src/')))) {
+      const match = req.headers.cookie.match(/last_proxy_port=(\d+)/);
+      if (match) {
+        portStr = match[1];
       }
     }
   }
 
   if (portStr) {
     const port = parseInt(portStr, 10);
-    // Safety check: Avoid routing to the main IDE port 3000 to prevent infinite loops
-    if (!isNaN(port) && port !== 3000) {
+    // Safety check: Avoid routing to the main IDE port 3000 to prevent infinite loops, and ensure valid TCP port range
+    if (!isNaN(port) && port >= 1 && port <= 65535 && port !== 3000) {
       const options = {
         host: '127.0.0.1',
         port: port,
@@ -103,11 +206,27 @@ app.use((req, res, next) => {
       if (options.headers) {
         delete options.headers.host;
         delete options.headers.referer;
+        delete options.headers['accept-encoding'];
       }
 
       const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-        proxyRes.pipe(res);
+        const contentType = proxyRes.headers['content-type'] || '';
+        if (contentType.toLowerCase().startsWith('text/html')) {
+          const headers = { ...proxyRes.headers };
+          delete headers['content-length'];
+          delete headers['content-encoding'];
+          res.writeHead(proxyRes.statusCode || 200, headers);
+          
+          let chunks: Buffer[] = [];
+          proxyRes.on('data', (chunk) => { chunks.push(chunk); });
+          proxyRes.on('end', () => {
+            const raw = Buffer.concat(chunks).toString('utf-8');
+            res.end(rewriteHtmlForProxy(raw, port));
+          });
+        } else {
+          res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
       });
 
       proxyReq.on('error', () => {
@@ -132,8 +251,8 @@ app.all('/proxy/:port*', (req, res) => {
 
   const port = parseInt(match[1], 10);
   
-  if (isNaN(port)) {
-    return res.status(400).send('Invalid port');
+  if (isNaN(port) || port < 1 || port > 65535) {
+    return res.status(400).send('Invalid port. Must be between 1 and 65535.');
   }
 
   // Save the subpath port in a session cookie
@@ -152,16 +271,32 @@ app.all('/proxy/:port*', (req, res) => {
   if (options.headers) {
     delete options.headers.host;
     delete options.headers.referer;
+    delete options.headers['accept-encoding'];
   }
 
   const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-    proxyRes.pipe(res);
+    const contentType = proxyRes.headers['content-type'] || '';
+    if (contentType.toLowerCase().startsWith('text/html')) {
+      const headers = { ...proxyRes.headers };
+      delete headers['content-length'];
+      delete headers['content-encoding'];
+      res.writeHead(proxyRes.statusCode || 200, headers);
+      
+      let chunks: Buffer[] = [];
+      proxyRes.on('data', (chunk) => { chunks.push(chunk); });
+      proxyRes.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf-8');
+        res.end(rewriteHtmlForProxy(raw, port));
+      });
+    } else {
+      res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+      proxyRes.pipe(res);
+    }
   });
 
   proxyReq.on('error', (err) => {
     res.status(502).send(`
-      <div style="font-family: system-ui, -apple-system, sans-serif; padding: 32px; background: #0b0b0e; color: #fff; min-height: 100vh; display: flex; flex-col; justify-content: center; align-items: center;">
+      <div style="font-family: system-ui, -apple-system, sans-serif; padding: 32px; background: #0b0b0e; color: #fff; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
          <div style="max-width: 500px; padding: 24px; background: #121217; border-radius: 16px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
             <h1 style="color: #f87171; font-size: 20px; font-weight: 600; margin: 0 0 12px 0;">🔌 المطور المحلي غير متصل</h1>
             <p style="color: #9ca3af; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0;">
@@ -223,6 +358,72 @@ app.post('/api/browser/state', (req, res) => {
 
 app.get('/api/browser/state', (req, res) => {
   res.json(lastKnownBrowserState);
+});
+
+// Service Worker endpoint for the Browser Preview Iframe Proxy Interceptor
+app.get('/proxy-sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.send(`
+    self.addEventListener('install', (event) => {
+      self.skipWaiting();
+    });
+
+    self.addEventListener('activate', (event) => {
+      event.waitUntil(self.clients.claim());
+    });
+
+    self.addEventListener('fetch', (event) => {
+      const url = new URL(event.request.url);
+      if (url.origin === self.location.origin) {
+        const path = url.pathname;
+        
+        // Skip system-level paths and proxy-sw itself
+        if (path.startsWith('/proxy/') || 
+            path.startsWith('/api/') || 
+            path === '/proxy-sw.js' || 
+            path === '/favicon.ico') {
+          return;
+        }
+
+        event.respondWith((async () => {
+          try {
+            const client = await self.clients.get(event.clientId);
+            if (client) {
+              const clientUrl = new URL(client.url);
+              const match = clientUrl.pathname.match(/^\\/proxy\\/(\\d+)/);
+              if (match) {
+                const port = match[1];
+                const newUrl = \`\${self.location.origin}/proxy/\${port}\${path}\${url.search}\${url.hash}\`;
+                
+                const init = {
+                  method: event.request.method,
+                  headers: event.request.headers,
+                  credentials: event.request.credentials,
+                  cache: event.request.cache,
+                  redirect: event.request.redirect,
+                  referrer: event.request.referrer,
+                  integrity: event.request.integrity,
+                };
+                
+                if (event.request.method !== 'GET' && event.request.method !== 'HEAD') {
+                  try {
+                    init.body = await event.request.clone().arrayBuffer();
+                  } catch (e) {
+                    console.warn('Could not read request body for cloning:', e);
+                  }
+                }
+                
+                return await fetch(new Request(newUrl, init));
+              }
+            }
+          } catch (err) {
+            console.error('Service Worker proxy interception error:', err);
+          }
+          return await fetch(event.request);
+        })());
+      }
+    });
+  `);
 });
 
 const BASE_WORKSPACE_DIR = path.resolve(process.cwd(), '.agent_workspace');
@@ -840,12 +1041,71 @@ async function startServer() {
     console.log(`Server listening on port ${PORT}`);
   });
 
+  interface TerminalSession {
+    bash: any;
+    outputBuffer: Buffer[];
+    activeSockets: Set<any>;
+  }
+
+  const terminalSessions = new Map<string, TerminalSession>();
+
   const wss = new WebSocketServer({ server });
   wss.on('connection', async (ws, req) => {
     try {
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       const workspaceId = url.searchParams.get('workspaceId');
       if (!workspaceId) {
+        // Intercept and proxy WebSocket connection to local port (Vite HMR, Chat WS, etc.)
+        let wsPort: number | null = null;
+        let wsPath = req.url || '/';
+
+        const portMatch = req.url?.match(/^\/proxy\/(\d+)(.*)/);
+        if (portMatch) {
+          wsPort = parseInt(portMatch[1], 10);
+          wsPath = portMatch[2] || '/';
+        } else {
+          const cookie = req.headers.cookie;
+          if (cookie) {
+            const cookieMatch = cookie.match(/last_proxy_port=(\d+)/);
+            if (cookieMatch) {
+              wsPort = parseInt(cookieMatch[1], 10);
+            }
+          }
+        }
+
+        if (wsPort && !isNaN(wsPort) && wsPort !== 3000) {
+          const localWsUrl = `ws://127.0.0.1:${wsPort}${wsPath}`;
+          const localWs = new WebSocket(localWsUrl, {
+            headers: {
+              ...req.headers,
+              host: `127.0.0.1:${wsPort}`
+            }
+          });
+
+          localWs.on('open', () => {
+            ws.on('message', (data) => {
+              try { localWs.send(data); } catch (_) {}
+            });
+            localWs.on('message', (data) => {
+              try { ws.send(data); } catch (_) {}
+            });
+          });
+
+          localWs.on('error', (err) => {
+            console.error(`WebSocket Proxy to 127.0.0.1:${wsPort} failed:`, err);
+            ws.close();
+          });
+
+          localWs.on('close', () => {
+            ws.close();
+          });
+
+          ws.on('close', () => {
+            localWs.close();
+          });
+          return;
+        }
+
         ws.close();
         return;
       }
@@ -862,73 +1122,119 @@ async function startServer() {
         return;
       }
 
-      let selectedShell = 'sh';
-      if (existsSync('/bin/bash')) {
-        selectedShell = '/bin/bash';
-      } else if (existsSync('/bin/sh')) {
-        selectedShell = '/bin/sh';
+      let session = terminalSessions.get(workspaceId);
+      if (!session) {
+        let selectedShell = 'sh';
+        if (existsSync('/bin/bash')) {
+          selectedShell = '/bin/bash';
+        } else if (existsSync('/bin/sh')) {
+          selectedShell = '/bin/sh';
+        }
+
+        const bash = spawn(selectedShell, [], { 
+          env: { 
+            ...process.env, 
+            TERM: 'xterm-256color',
+            PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+          }, 
+          cwd: wDir 
+        });
+
+        session = {
+          bash,
+          outputBuffer: [],
+          activeSockets: new Set(),
+        };
+        terminalSessions.set(workspaceId, session);
+
+        const appendToBuffer = (data: Buffer) => {
+          session?.outputBuffer.push(data);
+          if (session && session.outputBuffer.length > 2000) {
+            session.outputBuffer.shift();
+          }
+        };
+
+        bash.on('error', (err) => {
+          console.error('Terminal process error:', err);
+          if (session) {
+            for (const socket of session.activeSockets) {
+              try { socket.send(`\r\nError starting terminal: ${err.message}\r\n`); } catch (_) {}
+            }
+          }
+        });
+
+        if (bash.stdout) {
+          bash.stdout.on('error', (err) => {
+            console.error('Terminal stdout error:', err);
+          });
+          bash.stdout.on('data', (data) => {
+            appendToBuffer(data);
+            if (session) {
+              for (const socket of session.activeSockets) {
+                try { socket.send(data); } catch (_) {}
+              }
+            }
+          });
+        }
+
+        if (bash.stderr) {
+          bash.stderr.on('error', (err) => {
+            console.error('Terminal stderr error:', err);
+          });
+          bash.stderr.on('data', (data) => {
+            appendToBuffer(data);
+            if (session) {
+              for (const socket of session.activeSockets) {
+                try { socket.send(data); } catch (_) {}
+              }
+            }
+          });
+        }
+
+        if (bash.stdin) {
+          bash.stdin.on('error', (err) => {
+            console.error('Terminal stdin error:', err);
+          });
+        }
+
+        bash.on('close', () => {
+          if (session) {
+            for (const socket of session.activeSockets) {
+              try { socket.close(); } catch (_) {}
+            }
+          }
+          terminalSessions.delete(workspaceId);
+        });
       }
 
-      const bash = spawn(selectedShell, [], { 
-        env: { 
-          ...process.env, 
-          TERM: 'xterm-256color',
-          PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-        }, 
-        cwd: wDir 
+      // Add our current connection
+      session.activeSockets.add(ws);
+
+      ws.on('error', (err) => {
+        console.error('WebSocket terminal client connection error:', err);
       });
-      
-      bash.on('error', (err) => {
-        console.error('Terminal process error:', err);
-        try {
-          ws.send(`\r\nError starting terminal: ${err.message}\r\n`);
-        } catch (_) {}
-        ws.close();
-      });
 
-      if (bash.stdout) {
-        bash.stdout.on('error', (err) => {
-          console.error('Terminal stdout error:', err);
-        });
-        bash.stdout.on('data', (data) => {
-          try { ws.send(data); } catch (_) {}
-        });
+      // Replay all buffered lines so far to this connection so they see what happened in the background!
+      for (const buffer of session.outputBuffer) {
+        try { ws.send(buffer); } catch (_) {}
       }
-
-      if (bash.stderr) {
-        bash.stderr.on('error', (err) => {
-          console.error('Terminal stderr error:', err);
-        });
-        bash.stderr.on('data', (data) => {
-          try { ws.send(data); } catch (_) {}
-        });
-      }
-
-      if (bash.stdin) {
-        bash.stdin.on('error', (err) => {
-          console.error('Terminal stdin error:', err);
-        });
-      }
-
-      bash.on('close', () => {
-        try { ws.close(); } catch (_) {}
-      });
 
       ws.on('message', (msg) => {
         try {
-          if (bash.stdin && bash.stdin.writable) {
-            bash.stdin.write(msg);
+          if (session && session.bash.stdin && session.bash.stdin.writable) {
+            session.bash.stdin.write(msg);
           }
         } catch (_) {}
       });
 
       ws.on('close', () => {
-        try {
-          if (bash.pid && !bash.killed) {
-            bash.kill();
-          }
-        } catch (_) {}
+        if (session) {
+          session.activeSockets.delete(ws);
+          // Do not kill the bash process! This allows the session to remain persistent
+          // across tab switches, screen shifts, and workspace reloads!
+        }
       });
+
     } catch (wsErr: any) {
       console.error('WebSocket terminal connection setup error:', wsErr);
       try { ws.close(); } catch (_) {}
