@@ -249,6 +249,20 @@ export function BrowserPreview() {
     return () => window.removeEventListener('message', handleMessage);
   }, [isInputFocused]);
 
+  // 4. Listen for open-browser-preview events from the PortManager (sidebar)
+  useEffect(() => {
+    const handleOpenPreview = (e: Event) => {
+      const customEvent = e as CustomEvent<{ port: number }>;
+      if (customEvent.detail && customEvent.detail.port) {
+        const port = customEvent.detail.port;
+        setUrl(`/proxy/${port}/`);
+        setInputUrl(`http://localhost:${port}`);
+      }
+    };
+    window.addEventListener('open-browser-preview', handleOpenPreview);
+    return () => window.removeEventListener('open-browser-preview', handleOpenPreview);
+  }, []);
+
   const handleIframeLoad = () => {
     const iframe = iframeRef.current;
     if (iframe) {

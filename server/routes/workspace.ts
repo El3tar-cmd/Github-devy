@@ -29,29 +29,36 @@ async function copyDirRecursive(src: string, dest: string, exclude: string[] = [
 
 // Helper to check if local port is active
 function checkPortActive(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    socket.setTimeout(150);
-    socket.on('connect', () => {
-      socket.destroy();
-      resolve(true);
+  const tryConnect = (host: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(250);
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.on('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.connect(port, host);
     });
-    socket.on('timeout', () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.on('error', () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.connect(port, '127.0.0.1');
-  });
+  };
+
+  return Promise.any([tryConnect('127.0.0.1'), tryConnect('::1')])
+    .then((result) => result)
+    .catch(() => false);
 }
 
 const COMMON_PORTS = [
-  9876, 3001, 3002, 3003, 3004, 3005,
-  4200, 5000, 5001, 5173, 5174, 5175,
-  8000, 8001, 8080, 8081, 8082, 9000
+  3000, 3001, 3002, 3003, 3004, 3005,
+  4200, 5000, 5001, 5173, 5174, 5175, 5176, 5177,
+  8000, 8001, 8080, 8081, 8082, 8083, 8084, 8085,
+  9000, 9876
 ];
 
 router.post('/workspace/delete', async (req, res) => {

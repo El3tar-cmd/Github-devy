@@ -85,6 +85,7 @@ export const SidebarLayout: React.FC<SidebarLayoutProps> = ({
             onOpenPreview={(port) => {
               localStorage.setItem("browser_preview_url", `/proxy/${port}/`);
               localStorage.setItem("browser_preview_input_url", `http://localhost:${port}`);
+              window.dispatchEvent(new CustomEvent("open-browser-preview", { detail: { port } }));
               setIdeTab("browser");
             }}
           />
