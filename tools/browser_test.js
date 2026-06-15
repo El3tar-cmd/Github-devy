@@ -35,7 +35,7 @@ async function run() {
   console.log(`📡 Sending action to Sandbox Browser: ${actionType} ${arg1 || ''} ${arg2 || ''}...`);
 
   try {
-    const res = await fetch('http://127.0.0.1:3000/api/browser/action', {
+    const res = await fetch('http://127.0.0.1:9876/api/browser/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)

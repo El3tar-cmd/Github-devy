@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Devy Platform - Live Interactive Documentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: #08080c;
+    }
+    code, pre {
+      font-family: 'Fira Code', monospace;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(16, 185, 129, 0.3);
+    }
+  </style>
+</head>
+<body class="text-slate-200 min-h-screen flex flex-col selection:bg-emerald-500/30 selection:text-emerald-200">
+
+  <!-- Header Banner -->
+  <header class="h-16 border-b border-white/5 bg-[#0d0d12]/80 backdrop-blur-md sticky top-0 z-40 flex items-center justify-between px-6 lg:px-12">
+    <div class="flex items-center gap-3">
+      <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-md font-bold tracking-tight text-white flex items-center gap-1.5">
+          Devy Platform <span class="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">v1.1 Live Docs</span>
+        </h1>
+        <p class="text-[10px] text-slate-500">Autonomous AI Developer Workspace Portal</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+      <span>Local Port: <span class="text-emerald-400">9876</span></span>
+    </div>
+  </header>
+
+  <!-- Main Workstation Layout -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 border-r border-white/5 bg-[#0a0a0f] hidden md:block flex-shrink-0 overflow-y-auto p-4 custom-scrollbar">
+      <div class="space-y-6">
+        <div>
+          <h3 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Introduction</h3>
+          <ul class="space-y-1">
+            <li><a href="#overview" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Architecture Overview</a></li>
+            <li><a href="#features" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Key Features</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h3 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Platform Setup</h3>
+          <ul class="space-y-1">
+            <li><a href="#port-guide" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Ports & Signal Handler</a></li>
+            <li><a href="#plan-mode" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Plan Mode Board</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">API Reference</h3>
+          <ul class="space-y-1">
+            <li><a href="#fs-api" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Filesystem (/api/fs/*)</a></li>
+            <li><a href="#workspace-api" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Workspace & Ports</a></li>
+            <li><a href="#cmd-api" class="block px-3 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-white/5 transition-all">Cmd / Terminal Shell</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider px-3 mb-2">Interactive Workstation</h3>
+          <ul class="space-y-1">
+            <li>
+              <a href="#tester" class="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-bold text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 hover:bg-emerald-500/10 transition-all">
+                <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
+                Live API Console Tester
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Documentation Content -->
+    <main class="flex-1 overflow-y-auto p-6 lg:p-12 space-y-16 custom-scrollbar">
+      
+      <!-- Overview Section -->
+      <section id="overview" class="space-y-4 max-w-4xl">
+        <h2 class="text-2xl font-bold text-white tracking-tight">Architecture Overview (نظرة عامة على المعمارية)</h2>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          The Devy platform acts as a secure, sandboxed web-based IDE designed to serve autonomous AI coding agents (like Gemini 2.5/3.5 and local Ollama models). The platform splits logic into modular routes and WebSocket controllers, running inside a local Termux/Linux node runtime.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+          <div class="bg-[#101015] border border-white/5 rounded-2xl p-5 space-y-2">
+            <span class="text-emerald-400 font-mono text-xs font-semibold">01 / Modular Backend Router</span>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Express controllers modularized cleanly under <code>/server/routes/</code> to manage filesystem, shells, workspace listing, package installation, and database interactions.
+            </p>
+          </div>
+          <div class="bg-[#101015] border border-white/5 rounded-2xl p-5 space-y-2">
+            <span class="text-emerald-400 font-mono text-xs font-semibold">02 / WebSocket Tunneling</span>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Real-time terminal shell proxy mapped directly to system shells (bash/sh) allowing persistent bash command execution across tab transitions and UI refreshes.
+            </p>
+          </div>
+          <div class="bg-[#101015] border border-white/5 rounded-2xl p-5 space-y-2">
+            <span class="text-emerald-400 font-mono text-xs font-semibold">03 / State separates (React Context)</span>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Frontend uses structured contexts (<code>WorkspaceContext</code> & <code>AgentContext</code>) to decouple AI chat processes from workspace filesystem nodes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Key Features -->
+      <section id="features" class="space-y-4 max-w-4xl">
+        <h2 class="text-xl font-bold text-white tracking-tight">Key Platform Features (أهم ميزات المنصة)</h2>
+        <div class="bg-[#101015] border border-white/5 rounded-2xl p-6 space-y-4">
+          <ul class="space-y-3 text-sm text-slate-300">
+            <li class="flex items-start gap-2.5">
+              <svg class="w-4 h-4 text-emerald-400 mt-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span><strong>Token-Saving Summary Engine:</strong> Auto-compresses chat history exceeding 8 turns using LLM summarization, dropping older raw logs and injecting a clean summary context inside system prompts.</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <svg class="w-4 h-4 text-emerald-400 mt-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span><strong>Interactive Plan Board:</strong> Checkable Todo checklist which loads <code>.github-devy/tasks.md</code> and writes toggled items directly back to the project files.</span>
+            </li>
+            <li class="flex items-start gap-2.5">
+              <svg class="w-4 h-4 text-emerald-400 mt-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span><strong>Port-Release Signal Shutdown:</strong> Custom process handlers on <code>SIGINT</code> and <code>SIGTERM</code> kill all spawned background processes and terminal sockets, fully releasing port 9876.</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Port & Signal Handlers Guide -->
+      <section id="port-guide" class="space-y-4 max-w-4xl">
+        <h2 class="text-xl font-bold text-white tracking-tight">Port Configuration & Process Cleanups</h2>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          Devy runs on an unusual non-standard port <strong><code>9876</code></strong>. This isolates the platform server from active web-development projects (which typically lock standard ports like 3000, 5000, 5173, etc.).
+        </p>
+        <div class="bg-[#0b0b0e] border border-white/5 rounded-2xl p-5 font-mono text-xs leading-relaxed text-slate-300">
+          <p class="text-emerald-400">// Clean Shutdown Implementation inside server.ts</p>
+          <p>process.on('SIGINT', () => handleShutdown('SIGINT'));</p>
+          <p>process.on('SIGTERM', () => handleShutdown('SIGTERM'));</p>
+          <br>
+          <p>function handleShutdown(signal) {</p>
+          <p>&nbsp;&nbsp;cleanAllTerminalSessions(); <span class="text-slate-500">// SIGKILL to all active bash shells</span></p>
+          <p>&nbsp;&nbsp;killAllBackgroundProcesses(); <span class="text-slate-500">// SIGKILL to all Vite/Node dev servers</span></p>
+          <p>&nbsp;&nbsp;process.exit(0);</p>
+          <p>}</p>
+        </div>
+      </section>
+
+      <!-- Plan Mode Section -->
+      <section id="plan-mode" class="space-y-4 max-w-4xl">
+        <h2 class="text-xl font-bold text-white tracking-tight">Active Plan Mode (نمط التخطيط النشط)</h2>
+        <p class="text-sm text-slate-400 leading-relaxed">
+          Plan Mode is designed to tackle complex coding milestones or initialize new codebases. When enabled, Devy is directed to create two roadmap files in the project workspace:
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-[#101015] border border-white/5 rounded-2xl p-5 space-y-2">
+            <span class="text-white font-semibold text-xs block">📋 .github-devy/plan.md</span>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Contains the overall project specifications, architecture details, dependencies, and implementation notes in markdown formatting.
+            </p>
+          </div>
+          <div class="bg-[#101015] border border-white/5 rounded-2xl p-5 space-y-2">
+            <span class="text-white font-semibold text-xs block">✅ .github-devy/tasks.md</span>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Granular checklist tasks using markdown checkbox syntax (<code>- [ ]</code> and <code>- [x]</code>). Read and rendered interactively in the IDE Planner tab.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Interactive API Tester -->
+      <section id="tester" class="space-y-6 max-w-4xl">
+        <div>
+          <h2 class="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            Live API Console Tester (مختبر الواجهات التفاعلي)
+          </h2>
+          <p class="text-sm text-slate-400 mt-1">
+            Choose an API endpoint, input payload parameters, and test requests to the live running server instantly.
+          </p>
+        </div>
+
+        <div class="bg-[#101015] border border-white/5 rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
+          
+          <!-- Controller Panel -->
+          <div class="p-6 border-r border-white/5 space-y-4">
+            <div class="space-y-2">
+              <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">1. Select API Endpoint</label>
+              <select id="api-selector" onchange="onEndpointSelect()" class="w-full bg-[#181820] border border-white/5 text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer text-xs">
+                <option value="/api/workspaces">GET /api/workspaces (List active projects)</option>
+                <option value="/api/fs/list">POST /api/fs/list (List project files)</option>
+                <option value="/api/fs/read">POST /api/fs/read (Read file content)</option>
+                <option value="/api/fs/write">POST /api/fs/write (Write/create file)</option>
+                <option value="/api/fs/search">POST /api/fs/search (Grep search pattern)</option>
+                <option value="/api/workspace/active-ports">POST /api/workspace/active-ports (List listening ports)</option>
+              </select>
+            </div>
+
+            <div class="space-y-2">
+              <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">2. Input Request Payload (JSON)</label>
+              <textarea id="api-payload" class="w-full h-44 bg-[#0a0a0f] border border-white/5 text-slate-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-xs resize-y leading-relaxed">{
+}</textarea>
+            </div>
+
+            <button onclick="sendTestRequest()" class="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-semibold rounded-xl text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.15)] flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+              Execute Live API Test
+            </button>
+          </div>
+
+          <!-- Output Panel -->
+          <div class="p-6 bg-[#08080b] flex flex-col h-full min-h-[350px]">
+            <div class="flex items-center justify-between text-slate-500 text-[10px] font-mono pb-2 border-b border-white/5 mb-3">
+              <span>RESPONSE STREAM (JSON OUTPUT)</span>
+              <span id="response-status" class="font-bold">STATUS: IDLE</span>
+            </div>
+            <pre id="api-output" class="flex-1 w-full overflow-y-auto whitespace-pre-wrap font-mono text-xs text-slate-400 leading-relaxed bg-[#0a0a0f] border border-white/5 rounded-xl p-4 custom-scrollbar select-text">Response details will display here after execution.</pre>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <footer class="h-10 border-t border-white/5 bg-[#0a0a0f] flex items-center justify-between px-6 lg:px-12 text-[10px] text-slate-500 shrink-0">
+    <span>© 2026 Devy Autonomous Workstation. Licensed for Sandbox Environments.</span>
+    <span>Google DeepMind Advanced Coding Team</span>
+  </footer>
+
+  <!-- Interactive Script Logic -->
+  <script>
+    const payloads = {
+      '/api/workspaces': '{}',
+      '/api/fs/list': '{\n  "workspaceId": "test-suite-sandbox",\n  "path": "."\n}',
+      '/api/fs/read': '{\n  "workspaceId": "test-suite-sandbox",\n  "path": ".github-devy/plan.md"\n}',
+      '/api/fs/write': '{\n  "workspaceId": "test-suite-sandbox",\n  "path": "test.txt",\n  "content": "Hello World!"\n}',
+      '/api/fs/search': '{\n  "workspaceId": "test-suite-sandbox",\n  "pattern": "Hello",\n  "directory": "."\n}',
+      '/api/workspace/active-ports': '{\n  "workspaceId": "test-suite-sandbox"\n}'
+    };
+
+    function onEndpointSelect() {
+      const select = document.getElementById('api-selector');
+      const payloadArea = document.getElementById('api-payload');
+      payloadArea.value = payloads[select.value] || '{}';
+    }
+
+    async function sendTestRequest() {
+      const select = document.getElementById('api-selector');
+      const payloadArea = document.getElementById('api-payload');
+      const outputArea = document.getElementById('api-output');
+      const statusSpan = document.getElementById('response-status');
+
+      const path = select.value;
+      const method = path === '/api/workspaces' ? 'GET' : 'POST';
+      let bodyData = null;
+
+      if (method === 'POST') {
+        try {
+          bodyData = JSON.parse(payloadArea.value);
+        } catch (e) {
+          alert('Invalid JSON structure inside Request Payload');
+          return;
+        }
+      }
+
+      statusSpan.innerText = 'STATUS: SENDING...';
+      statusSpan.className = 'text-amber-400 font-bold';
+      outputArea.innerText = 'Connecting to local node server...';
+
+      try {
+        const options = {
+          method,
+          headers: { 'Content-Type': 'application/json' }
+        };
+        if (bodyData) {
+          options.body = JSON.stringify(bodyData);
+        }
+
+        const res = await fetch(path, options);
+        statusSpan.innerText = `STATUS: ${res.status} ${res.statusText}`;
+        
+        if (res.ok) {
+          statusSpan.className = 'text-emerald-400 font-bold';
+        } else {
+          statusSpan.className = 'text-rose-400 font-bold';
+        }
+
+        const data = await res.json();
+        outputArea.innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        statusSpan.innerText = 'STATUS: NETWORK FAILURE';
+        statusSpan.className = 'text-rose-500 font-bold';
+        outputArea.innerText = `Network connection failed.\n\nError details: ${err.message}\n\nMake sure the local server is listening on port 9876.`;
+      }
+    }
+
+    // Initialize first payload
+    onEndpointSelect();
+  </script>
+</body>
+</html>

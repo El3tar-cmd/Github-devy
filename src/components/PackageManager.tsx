@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useEventBus } from "../useEventBus";
 import { Package, Search, Plus, Trash2, Loader2, ArrowUpRight, Check, ShieldAlert } from "lucide-react";
 
 interface PackageManagerProps {
@@ -107,28 +108,26 @@ export function PackageManager({ workspaceId }: PackageManagerProps) {
     }
   };
 
-  const pollInstallerLogs = (id: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch("/api/debug/logs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId: id }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setInstallerLogs(data.logs || "");
-          if (data.status !== "running") {
-            clearInterval(interval);
-            setInstalling(false);
-            loadPackages(); // Refresh package list
-          }
+  const { subscribe } = useEventBus(workspaceId);
+
+  useEffect(() => {
+    if (!installerSessionId) return;
+
+    const unsubscribe = subscribe("debug:log", (data) => {
+      if (data && data.sessionId === installerSessionId) {
+        setInstallerLogs(data.logs || "");
+        if (data.status && data.status !== "running") {
+          setInstalling(false);
+          loadPackages(); // Refresh package list
         }
-      } catch (e) {
-        clearInterval(interval);
-        setInstalling(false);
       }
-    }, 1000);
+    });
+
+    return unsubscribe;
+  }, [installerSessionId, subscribe, loadPackages]);
+
+  const pollInstallerLogs = (id: string) => {
+    // Handled in useEffect via WebSocket event subscription
   };
 
   const handleInit = () => {

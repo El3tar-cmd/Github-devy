@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, ExternalLink, Play, MousePointer, Keyboard, Terminal, History, Sparkles, Globe } from 'lucide-react';
+import { useWorkspaceContext } from '../contexts/WorkspaceContext';
+import { useEventBus } from '../useEventBus';
 
 // Helper to map proxied URLs back to clean human-readable localhost URLs
 const deparseUrl = (proxyUrl: string): string => {
@@ -14,6 +16,8 @@ const deparseUrl = (proxyUrl: string): string => {
 };
 
 export function BrowserPreview() {
+  const { workspaceId } = useWorkspaceContext();
+  const { subscribe } = useEventBus(workspaceId);
   const [url, setUrl] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('browser_preview_url');
@@ -29,6 +33,8 @@ export function BrowserPreview() {
     }
     return 'http://localhost:5173';
   });
+
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('browser_preview_url', url);
@@ -170,21 +176,14 @@ export function BrowserPreview() {
     }
   };
 
-  // 1. Polling for agent commands & executing them in real-time
+  // 1. WebSocket event subscription for enqueued browser automation actions
   useEffect(() => {
-    let active = true;
-    const pollInterval = setInterval(async () => {
-      if (!active) return;
-      try {
-        const res = await fetch('/api/browser/pending');
-        if (!res.ok) return;
-
-        const data = await res.json();
-        const actions = data.actions || [];
-
-        for (const action of actions) {
-          const result = executeBrowserAction(action);
-          
+    return subscribe('browser:pending', async (data) => {
+      if (data && data.action) {
+        const action = data.action;
+        const result = executeBrowserAction(action);
+        
+        try {
           // Send result back to agent waiting thread
           await fetch('/api/browser/result', {
             method: 'POST',
@@ -197,21 +196,16 @@ export function BrowserPreview() {
               error: result.error
             })
           });
-
-          if (!result.success) {
-            addLog(`❌ فشل الأكشن الآلي: ${result.error}`, 'err');
-          }
+        } catch (err) {
+          console.error('Failed to post browser action result:', err);
         }
-      } catch (err) {
-        // Silent poll error
-      }
-    }, 1500);
 
-    return () => {
-      active = false;
-      clearInterval(pollInterval);
-    };
-  }, [url]);
+        if (!result.success) {
+          addLog(`❌ فشل الأكشن الآلي: ${result.error}`, 'err');
+        }
+      }
+    });
+  }, [subscribe, url]);
 
   // 2. Keep backend constantly updated of browser's current HTML and title to let agent inspect
   useEffect(() => {
@@ -223,10 +217,6 @@ export function BrowserPreview() {
           const iframeDoc = iframe.contentDocument || iframeWindow?.document;
           if (iframeDoc) {
             const currentIframeUrl = iframeWindow?.location.href || '';
-            if (currentIframeUrl) {
-              const mapped = deparseUrl(currentIframeUrl);
-              setInputUrl(mapped);
-            }
             fetch('/api/browser/state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -243,6 +233,40 @@ export function BrowserPreview() {
 
     return () => clearInterval(timer);
   }, [url, key]);
+
+  // 3. Listen for PREVIEW_URL_CHANGED events from the iframe proxy-client-helper
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'PREVIEW_URL_CHANGED') {
+        const mapped = deparseUrl(event.data.url);
+        // Only update if the user is not actively typing/focusing the input
+        if (!isInputFocused) {
+          setInputUrl(mapped);
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isInputFocused]);
+
+  const handleIframeLoad = () => {
+    const iframe = iframeRef.current;
+    if (iframe) {
+      try {
+        const iframeWindow = iframe.contentWindow;
+        const iframeDoc = iframe.contentDocument || iframeWindow?.document;
+        if (iframeWindow && iframeDoc) {
+          const currentIframeUrl = iframeWindow.location.href;
+          if (currentIframeUrl && !isInputFocused) {
+            const mapped = deparseUrl(currentIframeUrl);
+            setInputUrl(mapped);
+          }
+        }
+      } catch (e) {
+        // Cross-origin fallback
+      }
+    }
+  };
 
   // Handle manual clicks in the diagnostic toolbox
   const handleManualClick = () => {
@@ -278,6 +302,8 @@ export function BrowserPreview() {
               placeholder="e.g. localhost:5173 or just 8080"
               value={inputUrl}
               onChange={e => setInputUrl(e.target.value)}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
             />
             <button type="submit" className="text-[11px] text-emerald-400 font-mono font-bold hover:text-emerald-300">GO →</button>
           </form>
@@ -344,6 +370,7 @@ export function BrowserPreview() {
                 key={key}
                 id="preview-iframe"
                 src={url}
+                onLoad={handleIframeLoad}
                 className="w-full h-full border-none bg-white font-sans text-slate-900"
                 title="Sandbox Browser Preview"
               />

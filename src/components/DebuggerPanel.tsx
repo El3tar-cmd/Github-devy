@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useEventBus } from "../useEventBus";
 import { Play, Square, Loader2, RefreshCw, Terminal, CheckCircle2, XCircle, BrainCircuit } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -77,24 +78,34 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
   }, []);
 
   // Poll logs if the active session is running
+  const { subscribe } = useEventBus(workspaceId);
+
+  // Subscribe to debug logs and state changes via event bus
   useEffect(() => {
     if (!activeSessionId) return;
     
     // Initial fetch
     getLogs(activeSessionId);
     
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    if (activeSession && activeSession.status !== "running") {
-      setRunning(false);
-      return;
-    }
+    const unsubscribe = subscribe('debug:log', (data) => {
+      if (data && data.sessionId === activeSessionId) {
+        setLogs(data.logs || "");
+        
+        // Update session status in local state
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId ? { ...s, status: data.status, exitCode: data.exitCode } : s
+          )
+        );
 
-    const interval = setInterval(() => {
-      getLogs(activeSessionId);
-    }, 1000);
+        if (data.status) {
+          setRunning(data.status === "running");
+        }
+      }
+    });
 
-    return () => clearInterval(interval);
-  }, [activeSessionId, running]);
+    return unsubscribe;
+  }, [activeSessionId, subscribe]);
 
   // Scroll to bottom when logs change
   useEffect(() => {

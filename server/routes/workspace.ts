@@ -49,7 +49,7 @@ function checkPortActive(port: number): Promise<boolean> {
 }
 
 const COMMON_PORTS = [
-  3000, 3001, 3002, 3003, 3004, 3005,
+  9876, 3001, 3002, 3003, 3004, 3005,
   4200, 5000, 5001, 5173, 5174, 5175,
   8000, 8001, 8080, 8081, 8082, 9000
 ];
@@ -60,7 +60,6 @@ router.post('/workspace/delete', async (req, res) => {
     if (!workspaceId) return res.status(400).json({ error: 'workspaceId required' });
     const dir = getWorkspaceDir(workspaceId);
     await fs.rm(dir, { recursive: true, force: true });
-    await fs.mkdir(dir, { recursive: true });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -175,8 +174,7 @@ router.post('/workspace/import-folder', async (req, res) => {
 
 router.post('/workspace/import-local-path', async (req, res) => {
   try {
-    const { workspaceId, localPath } = req.body;
-    if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required' });
+    const { localPath } = req.body;
     if (!localPath) return res.status(400).json({ error: 'localPath is required' });
 
     let resolvedPath = localPath;
@@ -200,7 +198,7 @@ router.post('/workspace/import-local-path', async (req, res) => {
     const baseDir = path.resolve(getWorkspaceDir(folderName));
     await fs.mkdir(baseDir, { recursive: true });
 
-    await copyDirRecursive(resolvedPath, baseDir);
+    await copyDirRecursive(resolvedPath, baseDir, ['node_modules']);
 
     res.json({ success: true, folderName });
   } catch (error: any) {

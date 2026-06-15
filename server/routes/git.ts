@@ -10,6 +10,14 @@ const router = Router();
 // Prevent Git commands inside workspaces from traversing up to the IDE's own Git repo
 process.env.GIT_CEILING_DIRECTORIES = path.resolve(process.cwd());
 
+// Configure git globally to treat all directories under the workspace as safe (resolves Termux/Android ownership issues)
+import { exec } from 'child_process';
+try {
+  exec("git config --global --add safe.directory '*'", (err: any) => {
+    if (err) console.warn("Failed to set git safe.directory globally:", err);
+  });
+} catch (_) {}
+
 router.post('/clone', async (req, res) => {
   try {
     const { repoUrl, token, workspaceId } = req.body;

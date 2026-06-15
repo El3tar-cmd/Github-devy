@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { FileNode } from './types';
+import { useEventBus } from './useEventBus';
 
 export function useWorkspace(workspaceId: string) {
   const [tree, setTree] = useState<FileNode[]>([]);
@@ -62,12 +63,24 @@ export function useWorkspace(workspaceId: string) {
     }
   }, [workspaceId]);
 
-  // Poll tree
+  // Reset selected file and fetch tree when workspaceId changes
   useEffect(() => {
+    setSelectedFile(null);
+    setFileContent('');
+    setOriginalContent('');
+    setIsWorkspaceReady(false);
     fetchTree();
-    const interval = setInterval(fetchTree, 4000);
-    return () => clearInterval(interval);
-  }, [fetchTree, workspaceId]);
+  }, [workspaceId, fetchTree]);
+
+  const { subscribe } = useEventBus(workspaceId);
+
+  // Subscribe to file system changes via EventBus
+  useEffect(() => {
+    if (!workspaceId) return;
+    return subscribe('fs:changed', () => {
+      fetchTree();
+    });
+  }, [workspaceId, subscribe, fetchTree]);
 
   return {
     tree,

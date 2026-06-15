@@ -13,6 +13,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ activeTab }) => {
     sendMessage,
     isRunning,
     settings,
+    setSettings,
     abortAgent,
   } = useAgentContext();
 
@@ -63,21 +64,30 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({ activeTab }) => {
 
       {/* Input Form */}
       <div className="absolute bottom-6 left-0 right-0 max-w-3xl mx-auto px-4 md:px-6">
-        {!isRunning && (
-          <div className="flex gap-2 mb-2 justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setInputStr(
-                  "Please act as a tech lead and construct a detailed plan in 'plan.md' for this project. If 'plan.md' already exists, read its contents first, then update it reflecting what is completed and what remains. Make sure to use markdown task lists (- [ ] and - [x])."
-                );
-              }}
-              className="text-[11px] font-medium bg-[#2a2a32]/80 hover:bg-[#3b3b46] text-emerald-400 px-3 py-1.5 rounded-lg border border-white/5 transition-colors flex items-center gap-1.5 shadow-sm backdrop-blur-sm"
-            >
-              <ClipboardList className="w-3.5 h-3.5" /> Generate / Update Plan
-            </button>
+        <div className="flex items-center justify-between mb-2 bg-[#141419]/90 border border-white/5 px-4 py-2 rounded-xl backdrop-blur-sm">
+          <div className="flex items-center gap-2">
+            <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${settings.planModeActive ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.7)] animate-pulse" : "bg-slate-600"}`} />
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-slate-200">Plan Mode (نمط التخطيط)</span>
+              <span className="text-[10px] text-slate-500">Auto-tracks progress in plan.md / tasks.md</span>
+            </div>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={() => {
+              setSettings((prev) => ({ ...prev, planModeActive: !prev.planModeActive }));
+            }}
+            className={`w-10 h-5 rounded-full transition-all relative border border-transparent ${
+              settings.planModeActive ? "bg-emerald-500" : "bg-[#2a2a32]"
+            }`}
+          >
+            <div
+              className={`w-3.5 h-3.5 bg-black rounded-full absolute top-0.5 transition-all ${
+                settings.planModeActive ? "left-5" : "left-1"
+              }`}
+            />
+          </button>
+        </div>
         <form
           onSubmit={handleSubmit}
           className="relative flex items-center bg-[#1e1e24] border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] overflow-hidden transition-all focus-within:ring-2 focus-within:ring-emerald-500/50 focus-within:border-emerald-500/30"

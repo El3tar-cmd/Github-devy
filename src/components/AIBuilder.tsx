@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, Code, Play, Save, Loader2, ArrowRightLeft, FileCode, Check, RefreshCw } from "lucide-react";
+import { Sparkles, Code, Play, Save, Loader2, ArrowRightLeft, FileCode, Check, RefreshCw, Download } from "lucide-react";
 
 interface AIBuilderProps {
   workspaceId: string;
@@ -43,36 +43,67 @@ Requirements:
     try {
       const settingsString = localStorage.getItem("agent_settings");
       const settings = settingsString ? JSON.parse(settingsString) : {};
-      const geminiModel = settings.geminiModel || "gemini-2.5-flash";
-      const clientApiKey = settings.geminiApiKey || "";
+      
+      let text = "";
+      if (settings.apiProvider === "ollama") {
+        if (!settings.ollamaUrl) {
+          throw new Error("Ollama URL is not configured. Go to settings and set it.");
+        }
+        if (!settings.ollamaModel) {
+          throw new Error("Ollama Model is not selected. Go to settings and select one.");
+        }
+        const baseUrl = settings.ollamaUrl.replace(/\/+$/, "");
+        const res = await fetch(`${baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: settings.ollamaModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: activePrompt }
+            ],
+            stream: false,
+          }),
+        });
 
-      const payload = {
-        systemInstruction: {
-          role: "user",
-          parts: [{ text: systemPrompt }]
-        },
-        contents: [{
-          role: "user",
-          parts: [{ text: activePrompt }]
-        }]
-      };
+        if (!res.ok) {
+          throw new Error(`Ollama Error: ${(await res.text()).substring(0, 500)}`);
+        }
 
-      const res = await fetch("/api/gemini/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: geminiModel,
-          payload,
-          clientApiKey
-        }),
-      });
+        const data = await res.json();
+        text = data.message?.content || "";
+      } else {
+        const geminiModel = settings.geminiModel || "gemini-2.5-flash";
+        const clientApiKey = settings.geminiApiKey || "";
 
-      if (!res.ok) {
-        throw new Error("Failed to generate UI code");
+        const payload = {
+          systemInstruction: {
+            role: "user",
+            parts: [{ text: systemPrompt }]
+          },
+          contents: [{
+            role: "user",
+            parts: [{ text: activePrompt }]
+          }]
+        };
+
+        const res = await fetch("/api/gemini/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: geminiModel,
+            payload,
+            clientApiKey
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to generate UI code");
+        }
+
+        const data = await res.json();
+        text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       }
-
-      const data = await res.json();
-      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
       
       // Clean up markdown wrapper in case model ignored instruction
       text = text.replace(/^```html\s*/i, "").replace(/```\s*$/, "").trim();
@@ -82,7 +113,7 @@ Requirements:
         setViewMode("split");
       }
     } catch (e: any) {
-      alert("Error generating UI: " + e.message + ". Check your Gemini API Key in settings.");
+      alert("Error generating UI: " + e.message + ". Check your provider settings.");
     } finally {
       setGenerating(false);
     }
@@ -115,6 +146,19 @@ Requirements:
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDownload = () => {
+    if (!htmlCode) return;
+    const blob = new Blob([htmlCode], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = savePath || "generated-ui.html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -245,7 +289,7 @@ Requirements:
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-black rounded text-[10px] font-semibold flex items-center gap-1 transition-colors"
+                    className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-black rounded text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                   >
                     {saving ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -255,6 +299,14 @@ Requirements:
                       <Save className="w-3 h-3" />
                     )}
                     {saveSuccess ? "Saved!" : "Save File"}
+                  </button>
+                  <button
+                    onClick={handleDownload}
+                    className="px-2.5 py-1 bg-[#1e1e24] hover:bg-[#2a2a32] border border-white/10 text-slate-300 hover:text-white rounded text-[10px] font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="تحميل الملف مباشرة إلى جهازك"
+                  >
+                    <Download className="w-3 h-3" />
+                    Download
                   </button>
                 </div>
               )}

@@ -258,6 +258,100 @@ export const TOOLS_SCHEMA = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "git_status",
+      description: "Get status of the Git repository in the workspace (modified, untracked, added, deleted files)",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_diff",
+      description: "Get diff of a specific file in the local Git repository",
+      parameters: {
+        type: "object",
+        properties: {
+          filePath: { type: "string", description: "The relative path of the file to see git diff for" }
+        },
+        required: ["filePath"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_pull",
+      description: "Pull latest changes from remote Git repository",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_push",
+      description: "Push committed local branch changes to remote Git repository",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "git_init",
+      description: "Initialize a new local Git repository in workspace root",
+      parameters: { type: "object", properties: {} }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "manage_packages",
+      description: "Install, uninstall, or update npm packages in the workspace project",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["install", "uninstall", "update", "list"],
+            description: "The package action to perform"
+          },
+          packageName: {
+            type: "string",
+            description: "Optional package name. Leave empty for general install/update of all dependencies in package.json."
+          },
+          isDev: {
+            type: "boolean",
+            description: "Set true if it should be installed as devDependency"
+          }
+        },
+        required: ["action"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "ask_human",
+      description: "Request clarification, instructions, sensitive credentials (like passwords/API keys), or design feedback from the human user.",
+      parameters: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: "The specific question or instructions prompt to show to the human." }
+        },
+        required: ["question"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_screenshot",
+      description: "Capture a visual screenshot of the Sandbox Browser Preview viewport. The output is saved to '.github-devy/screenshot.png' in the workspace.",
+      parameters: { type: "object", properties: {} }
+    }
+  }
 ];
 
 export async function fetchOllamaModels(url: string) {
@@ -347,6 +441,105 @@ export async function executeToolCall(
       return await req("/api/browser/action", { type: "get-html" });
     case "sequential_thinking":
       return { success: true, acknowledged_thought: args.thought };
+    case "git_status":
+      return await req("/api/git/status", {});
+    case "git_diff":
+      return await req("/api/git/diff", { filePath: args.filePath });
+    case "git_pull":
+      return await req("/api/git/pull", {});
+    case "git_push":
+      return await req("/api/git/push", {});
+    case "git_init":
+      return await req("/api/git/init", {});
+    case "manage_packages": {
+      if (args.action === "list") {
+        return await req("/api/package/list", {});
+      }
+      let cmdStr = "";
+      if (args.action === "install") {
+        cmdStr = args.packageName ? `npm install ${args.packageName} ${args.isDev ? "-D" : ""}` : "npm install";
+      } else if (args.action === "uninstall") {
+        cmdStr = `npm uninstall ${args.packageName}`;
+      } else if (args.action === "update") {
+        cmdStr = `npm update ${args.packageName || ""}`;
+      }
+      
+      const res = await fetch(proxyBase + "/api/cmd/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmdStr, workspaceId }),
+        signal,
+      });
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const reader = res.body?.getReader();
+      if (!reader) return { output: "No output" };
+      const decoder = new TextDecoder();
+      let result = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        result += chunk;
+        if (onChunk) onChunk(result);
+      }
+      return { output: result || "Package operation executed successfully." };
+    }
+    case "ask_human": {
+      if ((window as any).askHuman) {
+        const answer = await (window as any).askHuman(args.question);
+        return { answer };
+      }
+      const answer = prompt(`Devy asks: ${args.question}`);
+      return { answer: answer || "Cancelled or empty response." };
+    }
+    case "browser_screenshot": {
+      try {
+        const loadHtml2Canvas = () => {
+          return new Promise<any>((resolve) => {
+            if ((window as any).html2canvas) {
+              resolve((window as any).html2canvas);
+              return;
+            }
+            const script = document.createElement("script");
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+            script.onload = () => resolve((window as any).html2canvas);
+            document.head.appendChild(script);
+          });
+        };
+
+        const html2canvas = await loadHtml2Canvas();
+        const iframe = document.getElementById("preview-iframe") as HTMLIFrameElement;
+        if (!iframe) {
+          return { error: "Sandbox Browser Preview viewport is closed. Open the 'Preview' tab in the IDE first." };
+        }
+        const iframeWindow = iframe.contentWindow;
+        const iframeDoc = iframe.contentDocument || iframeWindow?.document;
+        if (!iframeDoc || !iframeDoc.body) {
+          return { error: "Unable to read Sandbox Browser iframe body document contents." };
+        }
+
+        const canvas = await html2canvas(iframeDoc.body, {
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+        });
+        const dataUrl = canvas.toDataURL("image/png");
+        const base64 = dataUrl.split(",")[1];
+
+        await req("/api/fs/write", {
+          path: ".github-devy/screenshot.png",
+          content: base64,
+          encoding: "base64",
+        });
+
+        return {
+          success: true,
+          message: "Screenshot successfully captured and saved to '.github-devy/screenshot.png' in the workspace. You can read/verify changes.",
+        };
+      } catch (err: any) {
+        return { error: `Screenshot failed: ${err.message}` };
+      }
+    }
     default:
       return { error: `Unknown tool: ${name}` };
   }

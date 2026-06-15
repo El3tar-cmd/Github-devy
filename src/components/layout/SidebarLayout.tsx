@@ -8,7 +8,7 @@ import { PortManager } from "../PortManager";
 interface SidebarLayoutProps {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder") => void;
+  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner") => void;
 }
 
 export const SidebarLayout: React.FC<SidebarLayoutProps> = ({

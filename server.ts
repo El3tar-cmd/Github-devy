@@ -9,17 +9,18 @@ import browserRouter, { relativeAssetProxyCatcher, registerProxyRoutes } from '.
 import fsRouter from './server/routes/fs';
 import gitRouter from './server/routes/git';
 import workspaceRouter from './server/routes/workspace';
-import cmdRouter from './server/routes/cmd';
+import cmdRouter, { killAllBackgroundProcesses } from './server/routes/cmd';
 import webRouter from './server/routes/web';
 import dbRouter from './server/routes/db';
 import debugRouter from './server/routes/debug';
 import packageRouter from './server/routes/package';
 
 // Import Websocket handlers
-import { setupWebSocketTerminal } from './server/websocket/terminal';
+import { setupWebSocketTerminal, cleanAllTerminalSessions } from './server/websocket/terminal';
 
 const app = express();
-const PORT = 3000;
+const PORT = 9876;
+let serverInstance: http.Server | null = null;
 
 // Prevent Git commands inside workspaces from traversing up to the IDE's own Git repo
 process.env.GIT_CEILING_DIRECTORIES = path.resolve(process.cwd());
@@ -47,6 +48,10 @@ app.use('/api/package', packageRouter);
 
 // Setup Vite for Dev / Static files for Prod
 async function startServer() {
+  app.get('/docs', (req, res) => {
+    res.sendFile(path.resolve('docs.html'));
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -62,6 +67,7 @@ async function startServer() {
   }
 
   const server = http.createServer(app);
+  serverInstance = server;
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on port ${PORT}`);
@@ -70,5 +76,38 @@ async function startServer() {
   // Setup terminal websocket connections
   setupWebSocketTerminal(server);
 }
+
+// Clean shutdown handlers to kill all child processes and release ports
+function handleShutdown(signal: string) {
+  console.log(`\nReceived ${signal}. Starting clean shutdown...`);
+  
+  try {
+    cleanAllTerminalSessions();
+    console.log('✓ Cleaned all terminal sessions.');
+  } catch (err) {
+    console.error('Error cleaning terminal sessions:', err);
+  }
+
+  try {
+    killAllBackgroundProcesses();
+    console.log('✓ Killed all background processes.');
+  } catch (err) {
+    console.error('Error killing background processes:', err);
+  }
+
+  if (serverInstance) {
+    serverInstance.close(() => {
+      console.log('✓ HTTP server closed.');
+      process.exit(0);
+    });
+    // Force exit after 5 seconds if server won't close
+    setTimeout(() => process.exit(0), 5000);
+  } else {
+    process.exit(0);
+  }
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
 startServer();

@@ -5,18 +5,33 @@ import { existsSync } from 'fs';
 import fs from 'fs/promises';
 import { safePath } from '../utils/workspace';
 
+import { handleEventConnection } from './events';
+
 interface TerminalSession {
   bash: any;
   outputBuffer: string[];
   activeSockets: Set<any>;
 }
 
+export const terminalSessions = new Map<string, TerminalSession>();
+
+export function cleanAllTerminalSessions() {
+  for (const session of terminalSessions.values()) {
+    try {
+      session.bash.kill('SIGKILL');
+    } catch (_) {}
+  }
+  terminalSessions.clear();
+}
+
 export function setupWebSocketTerminal(server: http.Server) {
-  const terminalSessions = new Map<string, TerminalSession>();
   const wss = new WebSocketServer({ server });
 
   wss.on('connection', async (ws, req) => {
     try {
+      if (handleEventConnection(ws, req)) {
+        return;
+      }
       const url = new URL(req.url || '', `http://${req.headers.host}`);
       const workspaceId = url.searchParams.get('workspaceId');
       const tabId = url.searchParams.get('tabId') || 'default';
@@ -41,7 +56,7 @@ export function setupWebSocketTerminal(server: http.Server) {
           }
         }
 
-        if (wsPort && !isNaN(wsPort) && wsPort !== 3000) {
+        if (wsPort && !isNaN(wsPort) && wsPort !== 9876) {
           const localWsUrl = `ws://127.0.0.1:${wsPort}${wsPath}`;
           
           // Extract subprotocol from request headers if present
@@ -86,7 +101,11 @@ export function setupWebSocketTerminal(server: http.Server) {
       let wDir;
       try {
         wDir = (await safePath(workspaceId, '.')).wDir;
-        await fs.mkdir(wDir, { recursive: true });
+        // Verify the directory exists. Do not silently recreate it!
+        const stat = await fs.stat(wDir);
+        if (!stat.isDirectory()) {
+          throw new Error('Workspace is not a directory');
+        }
       } catch (e) {
         try {
           ws.send('\r\nError: Invalid or inaccessible workspace directory.\r\n');
@@ -118,8 +137,13 @@ export function setupWebSocketTerminal(server: http.Server) {
             TERM: 'xterm-256color',
             PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
           }, 
-          cwd: wDir 
+          cwd: wDir,
+          detached: true
         });
+
+        try {
+          bash.unref();
+        } catch (_) {}
 
         session = {
           bash,

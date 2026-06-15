@@ -2,8 +2,21 @@ import { Router } from 'express';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { safePath } from '../utils/workspace';
+import { terminalSessions } from '../websocket/terminal';
 
 const router = Router();
+export const activeProcesses = new Set<any>();
+
+export function killAllBackgroundProcesses() {
+  for (const child of activeProcesses) {
+    try {
+      if (child.pid && !child.killed) {
+        child.kill('SIGKILL');
+      }
+    } catch (_) {}
+  }
+  activeProcesses.clear();
+}
 
 router.post('/run', async (req, res) => {
   try {
@@ -41,8 +54,14 @@ router.post('/run', async (req, res) => {
       env: {
         ...process.env,
         PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-      }
+      },
+      detached: true
     });
+    try {
+      child.unref();
+    } catch (_) {}
+    (child as any).command = command;
+    activeProcesses.add(child);
     
     req.on('close', () => {
       clearTimeout(timeoutTimer);
@@ -54,6 +73,7 @@ router.post('/run', async (req, res) => {
     });
 
     child.on('error', (err) => {
+      activeProcesses.delete(child);
       clearTimeout(timeoutTimer);
       console.error('Command tool execution error:', err);
       try {
@@ -89,12 +109,84 @@ router.post('/run', async (req, res) => {
     }
 
     child.on('close', (code) => {
+      activeProcesses.delete(child);
       clearTimeout(timeoutTimer);
       try { res.end(); } catch (_) {}
     });
   } catch (error: any) {
     if (!res.headersSent) res.status(500).json({ error: error.message });
   }
+});
+
+router.get('/active', (req, res) => {
+  const activeTerminals = Array.from(terminalSessions.entries()).map(([key, session]) => {
+    const [workspaceId, tabId] = key.split('_');
+    return {
+      type: 'terminal',
+      id: key,
+      workspaceId,
+      tabId,
+      pid: session.bash.pid,
+    };
+  });
+
+  const activeCmds = Array.from(activeProcesses).map((child) => {
+    return {
+      type: 'background',
+      id: child.pid,
+      pid: child.pid,
+      command: (child as any).command || 'Command',
+    };
+  });
+
+  res.json({
+    terminals: activeTerminals,
+    backgrounds: activeCmds,
+  });
+});
+
+router.post('/kill', (req, res) => {
+  const { type, id } = req.body;
+  if (!type || id === undefined) {
+    return res.status(400).json({ error: 'type and id are required' });
+  }
+
+  if (type === 'terminal') {
+    const session = terminalSessions.get(String(id));
+    if (session) {
+      try {
+        session.bash.kill('SIGKILL');
+      } catch (e: any) {
+        console.error(`Error killing terminal: ${e.message}`);
+      }
+      terminalSessions.delete(String(id));
+      return res.json({ success: true, message: `Terminal session ${id} killed.` });
+    } else {
+      return res.status(404).json({ error: `Terminal session ${id} not found.` });
+    }
+  } else if (type === 'background') {
+    const pid = Number(id);
+    let found = false;
+    for (const child of activeProcesses) {
+      if (child.pid === pid) {
+        try {
+          child.kill('SIGKILL');
+        } catch (e: any) {
+          console.error(`Error killing background process: ${e.message}`);
+        }
+        activeProcesses.delete(child);
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      return res.json({ success: true, message: `Background process ${pid} killed.` });
+    } else {
+      return res.status(404).json({ error: `Background process ${pid} not found.` });
+    }
+  }
+
+  res.status(400).json({ error: 'Invalid process type' });
 });
 
 export default router;

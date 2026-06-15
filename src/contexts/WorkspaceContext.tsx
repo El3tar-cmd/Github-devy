@@ -70,6 +70,20 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const workspaceData = useWorkspace(workspaceId);
 
+  // Auto-select first available workspace if current workspaceId is empty/falsy,
+  // or clear to empty string if no workspaces exist.
+  useEffect(() => {
+    if (availableWorkspaces.length > 0) {
+      if (!workspaceId) {
+        setWorkspaceId(availableWorkspaces[0]);
+      }
+    } else {
+      if (workspaceId !== "") {
+        setWorkspaceId("");
+      }
+    }
+  }, [availableWorkspaces, workspaceId]);
+
   // Auto-save logic
   useEffect(() => {
     if (!workspaceData.selectedFile) return;
@@ -89,6 +103,11 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return () => clearTimeout(timer);
   }, [workspaceData.fileContent, workspaceData.selectedFile, workspaceData.originalContent, workspaceData.saveFile]);
 
+  const fetchTree = useCallback(async () => {
+    await workspaceData.fetchTree();
+    await fetchWorkspaces();
+  }, [workspaceData.fetchTree, fetchWorkspaces]);
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -97,7 +116,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         availableWorkspaces,
         fetchWorkspaces,
         tree: workspaceData.tree,
-        fetchTree: workspaceData.fetchTree,
+        fetchTree,
         selectedFile: workspaceData.selectedFile,
         setSelectedFile: workspaceData.setSelectedFile,
         fileContent: workspaceData.fileContent,

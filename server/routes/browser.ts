@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction, Express } from 'express';
 import http from 'http';
 import * as cheerio from 'cheerio';
+import { notifyBrowserPending } from '../websocket/events';
 
 const router = Router();
 
@@ -57,6 +58,18 @@ function rewriteHtmlForProxy(html: string, port: number): string {
     <!-- DEV_SITE_PROXY HELPER -->
     <script id="proxy-client-helper">
       (function() {
+        const notifyParent = () => {
+          try {
+            window.parent.postMessage({ type: 'PREVIEW_URL_CHANGED', url: window.location.href }, '*');
+          } catch(e){}
+        };
+
+        // Notify on initial load
+        notifyParent();
+
+        window.addEventListener('popstate', notifyParent);
+        window.addEventListener('hashchange', notifyParent);
+
         // Intercept client-side routing state changes
         const originalPushState = history.pushState;
         const originalReplaceState = history.replaceState;
@@ -67,7 +80,9 @@ function rewriteHtmlForProxy(html: string, port: number): string {
               url = '/proxy/${port}' + url;
             }
           }
-          return originalPushState.call(history, state, unused, url);
+          const res = originalPushState.call(history, state, unused, url);
+          notifyParent();
+          return res;
         };
         
         history.replaceState = function(state, unused, url) {
@@ -76,7 +91,9 @@ function rewriteHtmlForProxy(html: string, port: number): string {
               url = '/proxy/${port}' + url;
             }
           }
-          return originalReplaceState.call(history, state, unused, url);
+          const res = originalReplaceState.call(history, state, unused, url);
+          notifyParent();
+          return res;
         };
 
         // Intercept XMLHttpRequest
@@ -111,7 +128,7 @@ function rewriteHtmlForProxy(html: string, port: number): string {
 
         // Register Service Worker for robust absolute asset proxying
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/proxy-sw.js').then(function(reg) {
+          navigator.serviceWorker.register('/proxy-sw.js', { scope: '/proxy/' }).then(function(reg) {
             console.log('Service Worker registered with scope:', reg.scope);
             if (reg.active && !navigator.serviceWorker.controller) {
               window.location.reload();
@@ -179,8 +196,8 @@ export function relativeAssetProxyCatcher(req: Request, res: Response, next: Nex
 
   if (portStr) {
     const port = parseInt(portStr, 10);
-    // Safety check: Avoid routing to the main IDE port 3000 to prevent infinite loops, and ensure valid TCP port range
-    if (!isNaN(port) && port >= 1 && port <= 65535 && port !== 3000) {
+    // Safety check: Avoid routing to the main IDE port 9876 to prevent infinite loops, and ensure valid TCP port range
+    if (!isNaN(port) && port >= 1 && port <= 65535 && port !== 9876) {
       const options = {
         host: '127.0.0.1',
         port: port,
@@ -248,7 +265,6 @@ export function registerProxyRoutes(app: Express) {
           
           // Skip system-level paths and proxy-sw itself
           if (path.startsWith('/proxy/') || 
-              path.startsWith('/api/') || 
               path === '/proxy-sw.js' || 
               path === '/favicon.ico') {
             return;
@@ -375,6 +391,7 @@ router.post('/action', async (req, res) => {
   const action: BrowserAction = { id: actionId, type, selector, text, url };
 
   pendingActions.push(action);
+  notifyBrowserPending(action);
 
   // Poll for client fulfillment (up to 15 seconds)
   let attempts = 0;

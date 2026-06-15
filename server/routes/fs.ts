@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { safePath, getWorkspaceDir } from '../utils/workspace';
+import { notifyFsChanged } from '../websocket/events';
 
-const execAsync = promisify(exec);
 const router = Router();
 
 router.post('/read', async (req, res) => {
@@ -52,6 +51,7 @@ router.post('/write', async (req, res) => {
     } else {
       await fs.writeFile(resolved, content, 'utf8');
     }
+    notifyFsChanged(workspaceId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -68,6 +68,7 @@ router.post('/replace', async (req, res) => {
     }
     content = content.replace(search, replace);
     await fs.writeFile(resolved, content, 'utf8');
+    notifyFsChanged(workspaceId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -79,6 +80,7 @@ router.post('/mkdir', async (req, res) => {
     const { path: dirPath, workspaceId } = req.body;
     const { resolved } = await safePath(workspaceId, dirPath);
     await fs.mkdir(resolved, { recursive: true });
+    notifyFsChanged(workspaceId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -91,6 +93,7 @@ router.post('/rename', async (req, res) => {
     const { resolved: resolvedOld } = await safePath(workspaceId, oldPath);
     const { resolved: resolvedNew } = await safePath(workspaceId, newPath);
     await fs.rename(resolvedOld, resolvedNew);
+    notifyFsChanged(workspaceId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -102,6 +105,7 @@ router.post('/delete', async (req, res) => {
     const { path: targetPath, workspaceId } = req.body;
     const { resolved } = await safePath(workspaceId, targetPath);
     await fs.rm(resolved, { recursive: true, force: true });
+    notifyFsChanged(workspaceId);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -114,18 +118,30 @@ router.post('/search', async (req, res) => {
     const { wDir } = await safePath(workspaceId, directory);
     // Use grep to search, excluding large generated or lock/cache directories
     const ignoredDirs = ['.git', 'node_modules', '.chromium-profile', '.npm', '.cache', 'dist', 'build', 'out', 'venv', '.venv', '__pycache__'];
-    const excludeFlags = ignoredDirs.map(d => `--exclude-dir="${d}"`).join(' ');
-    
-    const caseFlag = caseSensitive ? '' : '-i';
-    const { stdout } = await execAsync(`grep -rnI ${caseFlag} ${excludeFlags} "${pattern.replace(/"/g, '\\"')}" .`, { cwd: wDir });
-    res.json({ matches: stdout });
-  } catch (error: any) {
-    // grep returns exit code 1 if no matches found
-    if (error.code === 1) {
-      res.json({ matches: 'No matches found.' });
-    } else {
-      res.status(500).json({ error: error.message });
+
+    const args = ['-rnI'];
+    if (!caseSensitive) args.push('-i');
+    for (const d of ignoredDirs) {
+      args.push(`--exclude-dir=${d}`);
     }
+    args.push('--', pattern, '.');
+
+    const result = await new Promise<string>((resolve, reject) => {
+      const proc = spawn('grep', args, { cwd: wDir });
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d) => stdout += d.toString());
+      proc.stderr.on('data', (d) => stderr += d.toString());
+      proc.on('close', (code) => {
+        if (code === 0) resolve(stdout);
+        else if (code === 1) resolve(''); // no matches
+        else reject(new Error(stderr || `grep exited with code ${code}`));
+      });
+      proc.on('error', reject);
+    });
+    res.json({ matches: result || 'No matches found.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

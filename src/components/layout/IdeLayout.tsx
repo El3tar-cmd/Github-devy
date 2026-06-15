@@ -13,10 +13,11 @@ import { DatabaseManager } from "../DatabaseManager";
 import { DebuggerPanel } from "../DebuggerPanel";
 import { PackageManager } from "../PackageManager";
 import { AIBuilder } from "../AIBuilder";
+import { PlannerPanel } from "../PlannerPanel";
 
 interface IdeLayoutProps {
-  ideTab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder";
-  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder") => void;
+  ideTab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner";
+  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner") => void;
   activeTab: "chat" | "ide";
 }
 
@@ -183,6 +184,16 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
             Editor
           </button>
           <button
+            onClick={() => setIdeTab("planner")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              ideTab === "planner"
+                ? "bg-[#2a2a32] text-emerald-400 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            Plan Board
+          </button>
+          <button
             onClick={() => setIdeTab("browser")}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               ideTab === "browser"
@@ -307,6 +318,7 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
         <div className={`flex-1 flex overflow-hidden ${ideTab === "editor" ? "" : "hidden"}`}>
           <div className="w-56 overflow-y-auto border-r border-white/5 bg-[#0e0e11] shrink-0">
             <FileTree
+              key={workspaceId}
               tree={tree}
               selectedPath={selectedFile}
               onSelect={(p) => {
@@ -317,6 +329,7 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
               onDeleteWorkspace={() => {
                 setSelectedFile(null);
                 setFileContent("");
+                setWorkspaceId("");
               }}
               onWorkspaceIdChange={setWorkspaceId}
             />
@@ -375,12 +388,13 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
 
         {/* Terminal Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "terminal" ? "" : "hidden"}`}>
-          <TerminalUI workspaceId={workspaceId} />
+          <TerminalUI key={workspaceId} workspaceId={workspaceId} />
         </div>
 
         {/* Git Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "git" ? "" : "hidden"}`}>
           <GitUI
+            key={workspaceId}
             workspaceId={workspaceId}
             onOpenFile={(p) => {
               openFile(p);
@@ -394,6 +408,7 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
         <div className={`flex-1 flex overflow-hidden ${ideTab === "search" ? "" : "hidden"}`}>
           {ideTab === "search" && (
             <SearchUI
+              key={workspaceId}
               workspaceId={workspaceId}
               onOpen={(p, line) => {
                 openFile(p);
@@ -408,24 +423,29 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
 
         {/* Database Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "db" ? "" : "hidden"}`}>
-          {ideTab === "db" && <DatabaseManager workspaceId={workspaceId} />}
+          {ideTab === "db" && <DatabaseManager key={workspaceId} workspaceId={workspaceId} />}
         </div>
 
         {/* Debugger Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "debugger" ? "" : "hidden"}`}>
-          {ideTab === "debugger" && <DebuggerPanel workspaceId={workspaceId} />}
+          {ideTab === "debugger" && <DebuggerPanel key={workspaceId} workspaceId={workspaceId} />}
         </div>
 
         {/* Package Manager Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "package" ? "" : "hidden"}`}>
-          {ideTab === "package" && <PackageManager workspaceId={workspaceId} />}
+          {ideTab === "package" && <PackageManager key={workspaceId} workspaceId={workspaceId} />}
         </div>
 
         {/* AI UI Builder Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "builder" ? "" : "hidden"}`}>
           {ideTab === "builder" && (
-            <AIBuilder workspaceId={workspaceId} onRefreshWorkspace={fetchTree} />
+            <AIBuilder key={workspaceId} workspaceId={workspaceId} onRefreshWorkspace={fetchTree} />
           )}
+        </div>
+
+        {/* Planner Tab */}
+        <div className={`flex-1 flex overflow-hidden ${ideTab === "planner" ? "" : "hidden"}`}>
+          {ideTab === "planner" && <PlannerPanel key={workspaceId} workspaceId={workspaceId} />}
         </div>
       </div>
     </div>

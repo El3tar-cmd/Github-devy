@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Radio, RefreshCw, ExternalLink } from 'lucide-react';
+import { useEventBus } from '../useEventBus';
 
 interface Props {
   workspaceId: string;
@@ -20,8 +21,8 @@ export function PortManager({ workspaceId, onOpenPreview }: Props) {
       });
       if (res.ok) {
         const data = await res.json();
-        // Filter out port 3000 since it is the IDE itself
-        const filtered = (data.ports || []).filter((p: number) => p !== 3000);
+        // Filter out port 9876 since it is the IDE itself
+        const filtered = (data.ports || []).filter((p: number) => p !== 9876);
         setPorts(filtered);
       }
     } catch (err) {
@@ -31,11 +32,19 @@ export function PortManager({ workspaceId, onOpenPreview }: Props) {
     }
   };
 
+  const { subscribe } = useEventBus(workspaceId);
+
   useEffect(() => {
     fetchActivePorts(true);
-    const interval = setInterval(() => fetchActivePorts(false), 5000);
-    return () => clearInterval(interval);
-  }, [workspaceId]);
+    return subscribe('ports:updated', (data) => {
+      if (data && Array.isArray(data.ports)) {
+        const filtered = data.ports.filter((p: number) => p !== 9876);
+        setPorts(filtered);
+      } else {
+        fetchActivePorts(false);
+      }
+    });
+  }, [workspaceId, subscribe]);
 
   return (
     <div className="mt-8 bg-[#101014]/40 border border-white/5 rounded-xl p-3.5 flex flex-col gap-3 font-sans">

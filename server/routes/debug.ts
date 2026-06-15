@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { safePath } from '../utils/workspace';
+import { notifyDebugLog } from '../websocket/events';
 
 const router = Router();
 
@@ -56,6 +57,7 @@ router.post('/start', async (req, res) => {
       if (session.logs.length > 5000) {
         session.logs.shift();
       }
+      notifyDebugLog(sessionId, session.logs.join(''), session.status);
     };
     
     child.stdout.on('data', appendLog);
@@ -64,11 +66,13 @@ router.post('/start', async (req, res) => {
     child.on('close', (code) => {
       session.status = code === 0 ? 'exited' : 'failed';
       session.exitCode = code ?? undefined;
+      notifyDebugLog(sessionId, session.logs.join(''), session.status, session.exitCode);
     });
     
     child.on('error', (err) => {
       session.status = 'failed';
       session.logs.push(`Process Error: ${err.message}\n`);
+      notifyDebugLog(sessionId, session.logs.join(''), session.status);
     });
     
     res.json({ success: true, sessionId, pid: child.pid });
@@ -103,6 +107,7 @@ router.post('/kill', (req, res) => {
     }
     session.status = 'exited';
     session.logs.push('\n[Process killed by user]\n');
+    notifyDebugLog(sessionId, session.logs.join(''), session.status);
   }
   res.json({ success: true });
 });

@@ -29,8 +29,25 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<"chat" | "ide">("chat");
   const [ideTab, setIdeTab] = useState<
-    "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder"
+    "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner"
   >("editor");
+
+  const [askHumanQuestion, setAskHumanQuestion] = useState<string | null>(null);
+  const [askHumanResolve, setAskHumanResolve] = useState<((val: string) => void) | null>(null);
+  const [askHumanInput, setAskHumanInput] = useState("");
+
+  useEffect(() => {
+    (window as any).askHuman = (question: string) => {
+      return new Promise<string>((resolve) => {
+        setAskHumanQuestion(question);
+        setAskHumanResolve(() => resolve);
+        setAskHumanInput("");
+      });
+    };
+    return () => {
+      delete (window as any).askHuman;
+    };
+  }, []);
 
   // Handle window resizing to close/open sidebar dynamically
   useEffect(() => {
@@ -129,6 +146,48 @@ function MainApp() {
           />
         </div>
       </div>
+
+      {askHumanQuestion && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[9999] flex items-center justify-center p-4 font-sans">
+          <div className="bg-[#121217] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/5">
+              <span className="text-emerald-400 font-bold text-sm">💡 DEVY REQUIRES INPUT</span>
+            </div>
+            
+            <p className="text-xs text-slate-300 leading-relaxed font-mono bg-white/5 p-3 rounded-lg border border-white/5 whitespace-pre-wrap">
+              {askHumanQuestion}
+            </p>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (askHumanResolve) {
+                  askHumanResolve(askHumanInput);
+                }
+                setAskHumanQuestion(null);
+                setAskHumanResolve(null);
+                setAskHumanInput("");
+              }} 
+              className="flex flex-col gap-4"
+            >
+              <textarea
+                value={askHumanInput}
+                onChange={(e) => setAskHumanInput(e.target.value)}
+                placeholder="Enter your answer, instructions, or credentials here..."
+                required
+                className="w-full h-24 bg-[#1d1d26] text-white text-xs rounded-xl px-3.5 py-2.5 outline-none border border-white/5 focus:border-emerald-500/50 transition-colors resize-none leading-relaxed"
+              />
+
+              <button
+                type="submit"
+                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black rounded-xl text-xs font-bold transition-colors w-full text-center shadow-lg shadow-emerald-500/10"
+              >
+                Send Response
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
