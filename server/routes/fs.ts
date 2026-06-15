@@ -46,13 +46,18 @@ router.post('/write', async (req, res) => {
     const { path: filePath, content, workspaceId, encoding } = req.body;
     const { resolved } = await safePath(workspaceId, filePath);
     await fs.mkdir(path.dirname(resolved), { recursive: true });
+    let bytesWritten = 0;
     if (encoding === 'base64') {
-      await fs.writeFile(resolved, Buffer.from(content, 'base64'));
+      const buffer = Buffer.from(content || '', 'base64');
+      await fs.writeFile(resolved, buffer);
+      bytesWritten = buffer.length;
     } else {
-      await fs.writeFile(resolved, content, 'utf8');
+      const text = content || '';
+      await fs.writeFile(resolved, text, 'utf8');
+      bytesWritten = Buffer.byteLength(text, 'utf8');
     }
     notifyFsChanged(workspaceId);
-    res.json({ success: true });
+    res.json({ success: true, bytesWritten });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

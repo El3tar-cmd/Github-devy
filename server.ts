@@ -21,6 +21,7 @@ import { setupWebSocketTerminal, cleanAllTerminalSessions } from './server/webso
 const app = express();
 const PORT = 9876;
 let serverInstance: http.Server | null = null;
+const isProductionServer = process.env.NODE_ENV === 'production' || process.argv[1]?.endsWith(path.join('dist', 'server.cjs'));
 
 // Prevent Git commands inside workspaces from traversing up to the IDE's own Git repo
 process.env.GIT_CEILING_DIRECTORIES = path.resolve(process.cwd());
@@ -52,7 +53,7 @@ async function startServer() {
     res.sendFile(path.resolve('docs.html'));
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProductionServer) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },

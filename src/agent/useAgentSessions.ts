@@ -1,6 +1,43 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { ChatMessage, ChatSession } from "../types";
 
+const MAX_STORED_SESSIONS = 20;
+const MAX_TOOL_RESULT_CHARS = 20000;
+
+function sanitizeToolResult(result?: string) {
+  if (!result) return result;
+
+  try {
+    const parsed = JSON.parse(result);
+    if (typeof parsed?.screenshot === "string" && parsed.screenshot.startsWith("data:image/")) {
+      return JSON.stringify({
+        ...parsed,
+        screenshot: undefined,
+        screenshotOmitted: true,
+      });
+    }
+  } catch (e) {}
+
+  if (result.length > MAX_TOOL_RESULT_CHARS) {
+    return `${result.slice(0, MAX_TOOL_RESULT_CHARS)}\n...[truncated for local storage]`;
+  }
+
+  return result;
+}
+
+function sanitizeSessionsForStorage(sessions: ChatSession[]) {
+  return sessions.slice(0, MAX_STORED_SESSIONS).map((session) => ({
+    ...session,
+    messages: session.messages.map((message) => ({
+      ...message,
+      toolInvocations: message.toolInvocations?.map((invocation) => ({
+        ...invocation,
+        result: sanitizeToolResult(invocation.result),
+      })),
+    })),
+  }));
+}
+
 export function useAgentSessions() {
   // Session Persistence
   const getInitialSessions = () => {
@@ -25,10 +62,22 @@ export function useAgentSessions() {
   });
 
   useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem("agent_sessions", JSON.stringify(sessions));
-    } else {
-      localStorage.removeItem("agent_sessions");
+    try {
+      if (sessions.length > 0) {
+        localStorage.setItem("agent_sessions", JSON.stringify(sanitizeSessionsForStorage(sessions)));
+      } else {
+        localStorage.removeItem("agent_sessions");
+      }
+    } catch (err: any) {
+      if (err?.name === "QuotaExceededError") {
+        try {
+          localStorage.setItem("agent_sessions", JSON.stringify(sanitizeSessionsForStorage(sessions.slice(0, 5))));
+        } catch (fallbackErr) {
+          console.warn("Failed to persist agent sessions after trimming.", fallbackErr);
+        }
+      } else {
+        console.warn("Failed to persist agent sessions.", err);
+      }
     }
   }, [sessions]);
 

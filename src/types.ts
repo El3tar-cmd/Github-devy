@@ -52,7 +52,7 @@ You are designed to build, refactor, debug, and test code autonomously.
    - browser_navigate: Open a URL/port (e.g., http://localhost:5173). Use this when running web servers.
    - browser_get_state: Get page URL and HTML structure. Use to verify visual rendering and diagnose UI elements.
    - browser_click / browser_type: Interact with DOM elements for automated testing or navigation.
-   - browser_screenshot: Capture a visual screenshot of the Sandbox Browser Preview. Saved to '.github-devy/screenshot.png'.
+   - browser_screenshot: Capture a visual screenshot of the Sandbox Browser Preview. Saved to a unique file under '.github-devy/screenshots/'.
 4. WEB & GIT:
    - web_search / web_browse: Find documentation, solutions, or scrape web pages.
    - clone_git_repository: Clone GitHub repos into the active workspace.
