@@ -1,7 +1,7 @@
 import { ChatMessage, ToolInvocation } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, ChevronDown, ChevronRight, CheckCircle2, CircleDashed, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -55,7 +55,15 @@ export function ChatMessageUI({ msg }: { msg: ChatMessage }) {
 }
 
 function ToolInvocationCard({ inv }: { inv: ToolInvocation }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    return inv.name === 'browser_screenshot' && inv.status === 'success';
+  });
+
+  useEffect(() => {
+    if (inv.name === 'browser_screenshot' && inv.status === 'success') {
+      setExpanded(true);
+    }
+  }, [inv.status, inv.name]);
   
   return (
     <motion.div
@@ -101,15 +109,38 @@ function ToolInvocationCard({ inv }: { inv: ToolInvocation }) {
                    </div>
                    
                    {inv.result ? (
-                     <div>
-                        <div className="text-slate-500 font-mono mb-1 text-[10px] uppercase tracking-wider">Result</div>
-                        <pre className="text-[11px] font-mono text-slate-300 m-0 leading-relaxed whitespace-pre-wrap break-words bg-[#1a1a21] p-3 rounded-lg border border-white/5">
-                          {inv.result.length > 5000 ? '...[truncated]\n' + inv.result.substring(inv.result.length - 5000) : inv.result}
-                        </pre>
-                     </div>
-                   ) : (
-                     <div className="text-slate-500 text-[11px] italic">Waiting for result...</div>
-                   )}
+                      <div className="space-y-2">
+                         <div className="text-slate-500 font-mono mb-1 text-[10px] uppercase tracking-wider">Result</div>
+                         
+                         {inv.name === 'browser_screenshot' && (() => {
+                            try {
+                               const resObj = JSON.parse(inv.result);
+                               if (resObj.screenshot) {
+                                  return (
+                                     <div className="p-2 bg-[#1a1a21] rounded-xl border border-white/5 max-w-full overflow-hidden">
+                                        <img 
+                                           src={resObj.screenshot} 
+                                           alt="Browser Sandbox Screenshot" 
+                                           className="rounded-lg max-w-full h-auto border border-white/10 shadow-lg object-contain mx-auto" 
+                                           style={{ maxHeight: '450px' }}
+                                        />
+                                        <p className="text-[10px] text-slate-500 mt-2 font-mono text-center">{resObj.message}</p>
+                                     </div>
+                                  );
+                               }
+                            } catch (e) {}
+                            return null;
+                         })()}
+
+                         {!(inv.name === 'browser_screenshot' && inv.result.includes('"screenshot"')) && (
+                           <pre className="text-[11px] font-mono text-slate-300 m-0 leading-relaxed whitespace-pre-wrap break-words bg-[#1a1a21] p-3 rounded-lg border border-white/5">
+                             {inv.result.length > 5000 ? '...[truncated]\n' + inv.result.substring(inv.result.length - 5000) : inv.result}
+                           </pre>
+                         )}
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 text-[11px] italic">Waiting for result...</div>
+                    )}
                 </div>
              </motion.div>
           )}

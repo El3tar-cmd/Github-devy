@@ -86,13 +86,7 @@ export async function submitGeminiRequest(
       parts: [{ text: systemPrompt }]
     },
     contents,
-    tools: [
-      { googleSearch: {} },
-      ...GEMINI_TOOLS
-    ],
-    toolConfig: {
-      includeServerSideToolInvocations: true
-    }
+    tools: GEMINI_TOOLS
   };
 
   const res = await fetch('/api/gemini/generate', {

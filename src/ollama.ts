@@ -535,6 +535,7 @@ export async function executeToolCall(
         return {
           success: true,
           message: "Screenshot successfully captured and saved to '.github-devy/screenshot.png' in the workspace. You can read/verify changes.",
+          screenshot: dataUrl,
         };
       } catch (err: any) {
         return { error: `Screenshot failed: ${err.message}` };
