@@ -1,5 +1,5 @@
 import { ChatMessage, ToolInvocation } from './types';
-import { TOOLS_SCHEMA, executeToolCall } from './ollama';
+import { TOOLS_SCHEMA } from './agent/tools/toolsSchema';
 
 // Convert OpenAI/Ollama tool schema to Gemini tool schema
 const GEMINI_TOOLS = [{
@@ -86,7 +86,11 @@ export async function submitGeminiRequest(
       parts: [{ text: systemPrompt }]
     },
     contents,
-    tools: GEMINI_TOOLS
+    tools: GEMINI_TOOLS,
+    generationConfig: {
+      maxOutputTokens: 4096,
+      temperature: 0.7
+    }
   };
 
   const res = await fetch('/api/gemini/generate', {
@@ -145,6 +149,16 @@ export async function submitGeminiRequest(
     }
   }
 
+  // Extract token counts and calculate cost
+  const isPro = String(model).toLowerCase().includes('pro');
+  const inputRate = isPro ? 1.25 : 0.075;
+  const outputRate = isPro ? 5.00 : 0.30;
+  
+  const usage = data.usageMetadata || {};
+  const inputTokens = usage.promptTokenCount || 0;
+  const outputTokens = usage.candidatesTokenCount || 0;
+  const costUsd = (inputTokens * inputRate / 1000000) + (outputTokens * outputRate / 1000000);
+
   // To maintain compatibility with the existing useAgent, map it to an Ollama-like response
   return {
     message: {
@@ -152,6 +166,9 @@ export async function submitGeminiRequest(
       content: text,
       tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
       geminiParts: parts
-    }
+    },
+    inputTokens,
+    outputTokens,
+    costUsd
   };
 }

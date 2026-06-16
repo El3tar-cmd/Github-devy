@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import http from 'http';
+import fs from 'fs';
 
 // Import Route Handlers
 import aiRouter from './server/routes/ai';
@@ -14,6 +15,8 @@ import webRouter from './server/routes/web';
 import dbRouter from './server/routes/db';
 import debugRouter from './server/routes/debug';
 import packageRouter from './server/routes/package';
+import ragRouter from './server/routes/rag';
+
 
 // Import Websocket handlers
 import { setupWebSocketTerminal, cleanAllTerminalSessions } from './server/websocket/terminal';
@@ -46,6 +49,8 @@ app.use('/api/web', webRouter);
 app.use('/api/db', dbRouter);
 app.use('/api/debug', debugRouter);
 app.use('/api/package', packageRouter);
+app.use('/api/rag', ragRouter);
+
 
 // Setup Vite for Dev / Static files for Prod
 async function startServer() {

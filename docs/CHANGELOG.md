@@ -48,8 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced API key protection
 - Added security headers
 - Improved XSS prevention
+## [1.1.0] - 2026-06-16
+
+### Added
+- **Codebase RAG Operations:** Added AST compiler symbol indexing (JavaScript/TypeScript Compiler APIs, Python syntax blocks) and dense Gemini vector similarity hybrid search.
+- **Asynchronous Background Orchestration:** Configured sub-agents and parallel agents to optionally run concurrently in the background (`background: true`).
+- **Iteration & Timeout Limits:** Added parameters (`maxIterations` and `timeoutSeconds`) to give main agents exact budget control over sub-agent engagement depth.
+- **Task Query & Listing:** Added `get_subagent_status` and `list_subagents` tools to track and poll background agent runs.
+
+### Fixed
+- **Circular Module Load Crash (White Screen):** Extracted `TOOLS_SCHEMA` from `ollama.ts` into a dedicated decoupled file `src/agent/tools/toolsSchema.ts`, preventing runtime map compilation crashes on initial asset load.
+- **LLM Context Window Bloat:** Configured automated base64 screenshot data URL stripping inside `runAgentLoop.ts` and `SubAgentRunner.ts` before dispatching message histories to LLMs.
+- **File Read Safety:** Capped read size (32,000 characters truncation) on file read endpoints to prevent context window explosion on large cache/npm lock files.
 
 ## [1.0.0] - 2026-06-16
+
 
 ### Added
 - Initial release of Github-devy

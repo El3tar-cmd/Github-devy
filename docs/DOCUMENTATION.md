@@ -931,6 +931,39 @@ const myPlugin: Plugin = {
 5. **HTTPS Only**: Use HTTPS in production
 6. **Regular Updates**: Keep dependencies updated
 
+## Advanced AI Features
+
+Github-devy incorporates a state-of-the-art multi-agent orchestration architecture and a symbol-aware Retrieval-Augmented Generation (RAG) system.
+
+### Codebase RAG & AST Indexing
+
+Instead of dumping the entire directory structure into the LLM's context, the platform utilizes hybrid dense-sparse retrieval to inject precise, symbol-level code context on demand:
+1. **Parser Layer:** Processes source code files dynamically. JS/TS files are parsed into symbol nodes (functions, classes, interfaces) using the native TypeScript Compiler AST APIs. Python files are parsed using structural indentation block extraction. Other document types are chunked by line blocks.
+2. **Indexing Database:** Cached locally under `.github-devy/rag_index.json`. The indexing process:
+   - Computes TF-IDF keyword weights across symbols and paths.
+   - Generates 768-dimension semantic embeddings using Google Gemini's `text-embedding-004` model when `GEMINI_API_KEY` is provided.
+3. **Retrieval Scorer:** Merges keyword matches and semantic cosine similarities:
+   $$\text{Score} = (0.4 \times \text{Keyword}) + (0.6 \times \text{Vector})$$
+4. **Self-Healing Fallback:** Calling the search endpoint on an unindexed workspace automatically triggers indexing in the background on the fly.
+
+---
+
+### Asynchronous Multi-Agent Background Orchestration
+
+For complex programming pipelines (such as planning, writing code, reviewing, and debugging), the main agent can delegate tasks to specialist sub-agents. These sub-agents run either in the foreground (synchronous blocking) or concurrently in the background (asynchronous):
+1. **Spawning Workers:** Start workers via the `invoke_subagent` and `invoke_parallel_subagents` tools. Set `background: true` to run asynchronously in the background.
+2. **Guards & Timeouts:** Configure `maxIterations` (caps total ReAct cycles) and `timeoutSeconds` (hard run time limits aborted via WebSocket-based abort controller signals) to control token budget and avoid infinite loops.
+3. **Tracking Progress:** Query active sub-agent results and states via the `get_subagent_status` tool or list session history via `list_subagents`.
+
+---
+
+### Context Window & Token economy Guardrails
+
+The platform enforces strict safety rules to conserve token budgets and prevent model freezes:
+- **Image Data Detachment:** Heavy base64 data URLs returned by `browser_screenshot` are stripped from messages right before sending history payloads to the LLM. This prevents token explosion while preserving full image rendering in the IDE chat window.
+- **File Truncation:** Reading large files is limited to 32,000 characters to prevent context window exhaustion. Agents are instructed to use `read_file_lines` for targeted reads.
+- **Output Capping:** Outputs are hard-bounded at 4,096 tokens per request.
+
 ---
 
 ## Contributing

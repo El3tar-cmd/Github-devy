@@ -1,358 +1,7 @@
 import { ChatMessage, Settings, ToolInvocation } from "./types";
+import { AgentOrchestrator } from "./agent/orchestrator/AgentOrchestrator";
+import { TOOLS_SCHEMA } from "./agent/tools/toolsSchema";
 
-export const TOOLS_SCHEMA = [
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description: "Read the entire contents of a file",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" } },
-        required: ["path"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read_file_lines",
-      description: "Read specific line ranges of a file. Use this for reading sections of large files.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string" },
-          startLine: { type: "number", description: "The 1-based start line number (inclusive)" },
-          endLine: { type: "number", description: "The 1-based end line number (inclusive)" }
-        },
-        required: ["path", "startLine", "endLine"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "write_file",
-      description: "Write string content to a file",
-      parameters: {
-        type: "object",
-        properties: { path: { type: "string" }, content: { type: "string" } },
-        required: ["path", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "replace_in_file",
-      description:
-        "Replace a specific string in a file with new content. Useful for targeted edits.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: { type: "string" },
-          search: { type: "string" },
-          replace: { type: "string" },
-        },
-        required: ["path", "search", "replace"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_content",
-      description: "Search using grep for a specific pattern in the workspace",
-      parameters: {
-        type: "object",
-        properties: {
-          pattern: { type: "string" },
-          directory: { type: "string" },
-        },
-        required: ["pattern"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "run_command",
-      description:
-        "Run a shell command in the workspace. Useful for ls, npm install, etc",
-      parameters: {
-        type: "object",
-        properties: { command: { type: "string" } },
-        required: ["command"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "web_search",
-      description: "Search the web using DuckDuckGo to find information",
-      parameters: {
-        type: "object",
-        properties: { query: { type: "string" } },
-        required: ["query"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "web_browse",
-      description:
-        "Browse, scrape, or read the textual content of any specific webpage or URL. Extremely useful for reading documentation links.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description:
-              "The absolute URL to browse or read (e.g. https://example.com/docs)",
-          },
-        },
-        required: ["url"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_directory_files",
-      description:
-        "Recursively list all files and subdirectories starting from a target directory path to understand workspace structure.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description:
-              'The target directory path. Defaults to "." for workspace root.',
-          },
-        },
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "sequential_thinking",
-      description:
-        "Used for step-by-step thinking or planning before acting. Just pass your thought.",
-      parameters: {
-        type: "object",
-        properties: { thought: { type: "string" } },
-        required: ["thought"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_commit_push",
-      description: "Commit all changes and push to GitHub",
-      parameters: {
-        type: "object",
-        properties: { message: { type: "string" } },
-        required: ["message"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "clone_git_repository",
-      description:
-        "Clone a GitHub repository into the active workspace, with an optional GitHub access token.",
-      parameters: {
-        type: "object",
-        properties: {
-          repoUrl: {
-            type: "string",
-            description:
-              "The HTTPS URL of the GitHub repository (e.g., https://github.com/user/repo).",
-          },
-          token: {
-            type: "string",
-            description:
-              "Optional GitHub personal access token (e.g. ghp_...) for private repositories.",
-          },
-        },
-        required: ["repoUrl"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browser_navigate",
-      description:
-        "Navigate the local Sandbox Browser Preview to a specific address or local port (e.g. \"http://localhost:5173\" or just \"http://localhost:3000\"). Use this whenever you start a web server/application to view it.",
-      parameters: {
-        type: "object",
-        properties: {
-          url: {
-            type: "string",
-            description:
-              "The local URL or port to load, e.g. \"http://localhost:5173/\" or \"3000\".",
-          },
-        },
-        required: ["url"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browser_click",
-      description:
-        "Simulate a real mouse click on a DOM element inside the active Sandbox Browser page using its CSS selector.",
-      parameters: {
-        type: "object",
-        properties: {
-          selector: {
-            type: "string",
-            description:
-              "The CSS selector of the click target element, e.g. \"button#login-btn\".",
-          },
-        },
-        required: ["selector"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browser_type",
-      description:
-        "Simulate keyboard typing into a DOM input/textarea element inside the active Sandbox Browser page using its CSS selector.",
-      parameters: {
-        type: "object",
-        properties: {
-          selector: {
-            type: "string",
-            description: "The CSS selector of the input field, e.g. \"input[type=email]\".",
-          },
-          text: {
-            type: "string",
-            description: "The plain text to type into the input field.",
-          },
-        },
-        required: ["selector", "text"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "browser_get_state",
-      description:
-        "Retrieve the current active URL and captured snapshot HTML of the local Sandbox Browser Preview. Use this to verify rendering output and diagnose UI pages.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_status",
-      description: "Get status of the Git repository in the workspace (modified, untracked, added, deleted files)",
-      parameters: { type: "object", properties: {} }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_diff",
-      description: "Get diff of a specific file in the local Git repository",
-      parameters: {
-        type: "object",
-        properties: {
-          filePath: { type: "string", description: "The relative path of the file to see git diff for" }
-        },
-        required: ["filePath"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_pull",
-      description: "Pull latest changes from remote Git repository",
-      parameters: { type: "object", properties: {} }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_push",
-      description: "Push committed local branch changes to remote Git repository",
-      parameters: { type: "object", properties: {} }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "git_init",
-      description: "Initialize a new local Git repository in workspace root",
-      parameters: { type: "object", properties: {} }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "manage_packages",
-      description: "Install, uninstall, or update npm packages in the workspace project",
-      parameters: {
-        type: "object",
-        properties: {
-          action: {
-            type: "string",
-            enum: ["install", "uninstall", "update", "list"],
-            description: "The package action to perform"
-          },
-          packageName: {
-            type: "string",
-            description: "Optional package name. Leave empty for general install/update of all dependencies in package.json."
-          },
-          isDev: {
-            type: "boolean",
-            description: "Set true if it should be installed as devDependency"
-          }
-        },
-        required: ["action"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "ask_human",
-      description: "Request clarification, instructions, sensitive credentials (like passwords/API keys), or design feedback from the human user.",
-      parameters: {
-        type: "object",
-        properties: {
-          question: { type: "string", description: "The specific question or instructions prompt to show to the human." }
-        },
-        required: ["question"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "browser_screenshot",
-      description: "Capture a visual screenshot of the Sandbox Browser Preview viewport. The output is saved to a unique file under '.github-devy/screenshots/' in the workspace.",
-      parameters: { type: "object", properties: {} }
-    }
-  }
-];
 
 export async function fetchOllamaModels(url: string) {
   try {
@@ -373,6 +22,7 @@ export async function executeToolCall(
   name: string,
   args: any,
   workspaceId: string,
+  settings?: Settings,
   onChunk?: (chunk: string) => void,
   signal?: AbortSignal,
 ) {
@@ -411,10 +61,24 @@ export async function executeToolCall(
   }
 
   switch (name) {
-    case "read_file":
-      return await req("/api/fs/read", args);
-    case "read_file_lines":
-      return await req("/api/fs/read-lines", args);
+    case "read_file": {
+      const result = await req("/api/fs/read", args);
+      const MAX_CHARS = 32000; // ~8000 tokens
+      if (result && typeof result.content === "string" && result.content.length > MAX_CHARS) {
+        result.content = result.content.substring(0, MAX_CHARS) + 
+          `\n\n... [TRUNCATED — file is ${result.content.length} characters. Use read_file_lines to read specific sections of this file]`;
+      }
+      return result;
+    }
+    case "read_file_lines": {
+      const result = await req("/api/fs/read-lines", args);
+      const MAX_LINES = 1000;
+      if (result && typeof result.content === "string" && (args.endLine - args.startLine) > MAX_LINES) {
+        result.content = result.content.split("\n").slice(0, MAX_LINES).join("\n") +
+          `\n\n... [TRUNCATED — requested line range exceeds ${MAX_LINES} lines]`;
+      }
+      return result;
+    }
     case "write_file":
       return await req("/api/fs/write", args);
     case "replace_in_file":
@@ -768,6 +432,140 @@ export async function executeToolCall(
       } catch (err: any) {
         return { error: `Screenshot failed: ${err.message}` };
       }
+    }
+    case "search_codebase_rag":
+      return await req("/api/rag/search", { ...args, clientApiKey: settings?.geminiApiKey });
+    case "index_codebase_rag":
+      return await req("/api/rag/index", { clientApiKey: settings?.geminiApiKey });
+    case "invoke_subagent": {
+      if (!settings) {
+        return { error: "Settings are required to invoke subagents." };
+      }
+      let orchestrator = (window as any).__agentOrchestrator;
+      if (!orchestrator) {
+        orchestrator = new AgentOrchestrator();
+        (window as any).__agentOrchestrator = orchestrator;
+      }
+      
+      const instancePromise = orchestrator.invokeSubAgent(
+        args.agentType,
+        args.task,
+        settings,
+        workspaceId,
+        TOOLS_SCHEMA,
+        executeToolCall,
+        (agentId: string, status: string) => {
+          if (onChunk) onChunk(JSON.stringify({ agentId, status }));
+        },
+        args.maxIterations,
+        args.timeoutSeconds
+      );
+      
+      if (args.background) {
+        const allAgents = orchestrator.getAll();
+        const latest = allAgents[allAgents.length - 1];
+        return {
+          agentId: latest ? latest.id : "unknown",
+          agentType: args.agentType,
+          status: "running",
+          background: true,
+          message: "Sub-agent started successfully in the background. Check status using get_subagent_status."
+        };
+      }
+      
+      const instance = await instancePromise;
+      return {
+        agentId: instance.id,
+        agentType: args.agentType,
+        status: instance.status,
+        result: instance.result,
+        iterationsUsed: instance.messages.filter(m => m.role === 'assistant').length,
+      };
+    }
+    case "invoke_parallel_subagents": {
+      if (!settings) {
+        return { error: "Settings are required to invoke parallel subagents." };
+      }
+      let orchestrator = (window as any).__agentOrchestrator;
+      if (!orchestrator) {
+        orchestrator = new AgentOrchestrator();
+        (window as any).__agentOrchestrator = orchestrator;
+      }
+      
+      const tasks = args.agents.map((a: any) => ({
+        typeName: a.agentType,
+        task: a.task,
+        maxIterations: a.maxIterations,
+        timeoutSeconds: a.timeoutSeconds
+      }));
+      
+      const instancesPromise = orchestrator.invokeParallel(
+        tasks,
+        settings,
+        workspaceId,
+        TOOLS_SCHEMA,
+        executeToolCall,
+        (agentId: string, status: string) => {
+          if (onChunk) onChunk(JSON.stringify({ agentId, status }));
+        }
+      );
+      
+      if (args.background) {
+        const allAgents = orchestrator.getAll();
+        const count = args.agents.length;
+        const latest = allAgents.slice(-count);
+        return {
+          agents: latest.map(inst => ({
+            agentId: inst.id,
+            agentType: inst.definition.name,
+            status: "running",
+          })),
+          background: true,
+          message: "Parallel sub-agents started successfully in the background."
+        };
+      }
+      
+      const instances = await instancesPromise;
+      return {
+        agents: instances.map(inst => ({
+          agentId: inst.id,
+          agentType: inst.definition.name,
+          status: inst.status,
+          result: inst.result,
+        }))
+      };
+    }
+    case "get_subagent_status": {
+      const orchestrator = (window as any).__agentOrchestrator;
+      if (!orchestrator) {
+        return { error: "No active orchestrator found." };
+      }
+      const instance = orchestrator.getAgent(args.agentId);
+      if (!instance) {
+        return { error: `Sub-agent with ID ${args.agentId} not found.` };
+      }
+      return {
+        agentId: instance.id,
+        agentType: instance.definition.name,
+        status: instance.status,
+        result: instance.result,
+        iterationsUsed: instance.messages.filter((m: any) => m.role === 'assistant').length,
+      };
+    }
+    case "list_subagents": {
+      const orchestrator = (window as any).__agentOrchestrator;
+      if (!orchestrator) {
+        return { error: "No active orchestrator found." };
+      }
+      const instances = orchestrator.getAll();
+      return {
+        agents: instances.map((inst: any) => ({
+          agentId: inst.id,
+          agentType: inst.definition.name,
+          status: inst.status,
+          startedAt: inst.startedAt,
+        }))
+      };
     }
     default:
       return { error: `Unknown tool: ${name}` };

@@ -32,6 +32,13 @@ export function ChatMessageUI({ msg }: { msg: ChatMessage }) {
       )}
 
       <div className="flex-1 overflow-x-hidden min-w-0 w-full max-w-full">
+         {msg.costUsd !== undefined && (msg.inputTokens !== undefined || msg.outputTokens !== undefined) && (
+            <div className="flex items-center gap-2 mb-2 font-mono text-[10px] text-slate-500 bg-white/[0.02] border border-white/5 w-fit px-2 py-0.5 rounded-full select-none">
+              <span>Cost: <span className="text-emerald-400">${msg.costUsd.toFixed(6)}</span></span>
+              <span className="text-slate-600">|</span>
+              <span>Tokens: {msg.inputTokens || 0} in / {msg.outputTokens || 0} out</span>
+            </div>
+         )}
          {msg.content && (
             <div className={clsx("break-words overflow-hidden w-full max-w-full", !isUser && "prose prose-invert prose-emerald max-w-none prose-pre:bg-[#151519] prose-pre:border prose-pre:border-white/10 prose-headings:text-emerald-50 prose-a:text-emerald-400 prose-p:text-slate-300")}>
                {isUser ? msg.content : (
@@ -97,6 +104,70 @@ function ToolInvocationCard({ inv }: { inv: ToolInvocation }) {
       );
     }
   };
+
+  const renderSubAgentResult = () => {
+    if (!inv.result) return null;
+    
+    try {
+      const res = JSON.parse(inv.result);
+      
+      // Check if it is a running progress state
+      if (res.agentId && res.status && !res.result && !res.agents) {
+        return (
+          <div className="flex items-center gap-2 p-3 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-xl font-mono text-[11px] animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+            <span>Sub-Agent [{res.agentId.substring(0, 6)}...]: {res.status}</span>
+          </div>
+        );
+      }
+      
+      // Parallel sub-agents results
+      if (Array.isArray(res.agents)) {
+        return (
+          <div className="space-y-3 w-full">
+            {res.agents.map((agent: any, idx: number) => (
+              <div key={idx} className="bg-[#121217] border border-white/5 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between border-b border-white/5 pb-1 text-xs">
+                  <span className="font-bold text-emerald-400">🤖 {agent.agentType} Agent</span>
+                  <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded-full ${
+                    agent.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400 animate-pulse'
+                  }`}>
+                    {agent.status.toUpperCase()}
+                  </span>
+                </div>
+                {agent.result && (
+                  <div className="prose prose-invert prose-xs max-w-none text-slate-300 font-sans leading-relaxed select-text mt-2 text-left">
+                    <Markdown remarkPlugins={[remarkGfm]}>{agent.result}</Markdown>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      }
+      
+      // Single sub-agent completed result
+      if (res.agentId && res.result) {
+        return (
+          <div className="space-y-3 bg-[#121217] border border-white/5 rounded-xl p-4 w-full">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2 text-xs">
+              <span className="font-bold text-emerald-400">🤖 {res.agentType.toUpperCase()} Agent</span>
+              <span className="text-slate-500 font-mono text-[10px]">
+                Iterations: {res.iterationsUsed} | ID: {res.agentId.substring(0, 6)}
+              </span>
+            </div>
+            <div className="prose prose-invert prose-xs max-w-none text-slate-300 font-sans leading-relaxed select-text mt-2 text-left">
+              <Markdown remarkPlugins={[remarkGfm]}>{res.result}</Markdown>
+            </div>
+          </div>
+        );
+      }
+    } catch (e) {
+      // Fallback
+    }
+    
+    return null;
+  };
   
   return (
     <motion.div
@@ -146,8 +217,9 @@ function ToolInvocationCard({ inv }: { inv: ToolInvocation }) {
                          <div className="text-slate-500 font-mono mb-1 text-[10px] uppercase tracking-wider">Result</div>
                          
                          {inv.name === 'browser_screenshot' && renderScreenshotResult()}
+                         {(inv.name === 'invoke_subagent' || inv.name === 'invoke_parallel_subagents') && renderSubAgentResult()}
 
-                         {inv.name !== 'browser_screenshot' && (
+                         {inv.name !== 'browser_screenshot' && inv.name !== 'invoke_subagent' && inv.name !== 'invoke_parallel_subagents' && (
                            <pre className="text-[11px] font-mono text-slate-300 m-0 leading-relaxed whitespace-pre-wrap break-words bg-[#1a1a21] p-3 rounded-lg border border-white/5">
                              {inv.result.length > 5000 ? '...[truncated]\n' + inv.result.substring(inv.result.length - 5000) : inv.result}
                            </pre>

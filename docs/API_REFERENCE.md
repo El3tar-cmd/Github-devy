@@ -874,6 +874,94 @@ Content-Type: application/json
 
 ---
 
+### Codebase RAG Operations
+
+Endpoints to index, search, and monitor symbol-level indexing of the codebase.
+
+#### Get Indexing Status
+
+```http
+POST /api/rag/status
+Content-Type: application/json
+
+{
+  "workspaceId": "my-workspace-id"
+}
+```
+
+**Response:**
+```json
+{
+  "exists": true,
+  "indexedAt": 1718534091000,
+  "chunksCount": 142,
+  "workspaceId": "my-workspace-id"
+}
+```
+
+#### Rebuild Codebase Index
+
+Reads all workspace source code files, parses TypeScript/JavaScript (via AST Compiler API) and Python, and generates TF-IDF terms as well as semantic vectors (via Gemini `text-embedding-004`).
+
+```http
+POST /api/rag/index
+Content-Type: application/json
+
+{
+  "workspaceId": "my-workspace-id",
+  "clientApiKey": "optional_gemini_api_key_override"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "indexedAt": 1718534092000,
+  "chunksCount": 142,
+  "embeddedCount": 142
+}
+```
+
+#### Search Codebase (Hybrid RAG Search)
+
+Queries the workspace index using sparse word overlap (TF-IDF keyword matching on declarations and path) combined with dense cosine similarities (semantic embeddings matching).
+
+```http
+POST /api/rag/search
+Content-Type: application/json
+
+{
+  "workspaceId": "my-workspace-id",
+  "query": "safePath traversal verification",
+  "clientApiKey": "optional_gemini_api_key_override",
+  "limit": 5
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "query": "safePath traversal verification",
+  "results": [
+    {
+      "filePath": "server/utils/workspace.ts",
+      "name": "safePath",
+      "type": "function",
+      "startLine": 49,
+      "endLine": 70,
+      "content": "export async function safePath(id: string, subPath: string) {\n  const baseDir = ...",
+      "keywordScore": 4.5,
+      "vectorScore": 0.895,
+      "finalScore": 0.717
+    }
+  ]
+}
+```
+
+---
+
 ## WebSocket API
 
 ### Terminal WebSocket

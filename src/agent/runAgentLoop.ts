@@ -1,5 +1,6 @@
 import { ChatMessage, Settings, ChatSession } from "../types";
-import { TOOLS_SCHEMA, executeToolCall } from "../ollama";
+import { executeToolCall } from "../ollama";
+import { TOOLS_SCHEMA } from "./tools/toolsSchema";
 import { submitGeminiRequest } from "../geminiApi";
 import { summarizeHistory } from "./summarizeHistory";
 
@@ -14,6 +15,35 @@ interface RunAgentLoopParams {
   abortControllerRef: React.MutableRefObject<AbortController | null>;
   onSettingsUpdate?: (s: Partial<Settings>, newWorkspaceId?: string) => void;
   setIsRunning: (isRunning: boolean) => void;
+}
+
+function sanitizeMessagesForLLM(msgs: ChatMessage[]): ChatMessage[] {
+  return msgs.map((m) => {
+    if (m.toolInvocations) {
+      const sanitizedInvs = m.toolInvocations.map((inv) => {
+        if (inv.name === "browser_screenshot" && inv.result) {
+          try {
+            const parsed = JSON.parse(inv.result);
+            if (parsed.screenshot) {
+              parsed.screenshot = "[IMAGE DATA DETACHED - VIEW NATIVELY IN IDE CHAT VIEW]";
+              return {
+                ...inv,
+                result: JSON.stringify(parsed)
+              };
+            }
+          } catch (e) {
+            // fallback
+          }
+        }
+        return inv;
+      });
+      return {
+        ...m,
+        toolInvocations: sanitizedInvs
+      };
+    }
+    return m;
+  });
 }
 
 export async function runAgentLoop({
@@ -149,9 +179,12 @@ Instructions for updating the plan and tasks:
         ? `${baseSystemPrompt}\n\n[CONVERSATION HISTORY SUMMARY - READ THIS TO KNOW WHAT HAPPENED BUT DO NOT MENTION IT TO USER UNLESS RELEVANT]:\n${historySummary}`
         : baseSystemPrompt) + activeProjectContext + planContext;
 
-      const messagesToSend = summarizedCount > 0 ? iterMessages.slice(summarizedCount) : iterMessages;
+      const messagesToSend = sanitizeMessagesForLLM(summarizedCount > 0 ? iterMessages.slice(summarizedCount) : iterMessages);
 
       let responseMsg: any;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let costUsd = 0;
 
       if (settings.apiProvider === "gemini") {
         const data = await submitGeminiRequest(
@@ -162,6 +195,9 @@ Instructions for updating the plan and tasks:
           ac.signal,
         );
         responseMsg = data.message;
+        inputTokens = (data as any).inputTokens || 0;
+        outputTokens = (data as any).outputTokens || 0;
+        costUsd = (data as any).costUsd || 0;
       } else {
         // Ollama Flow
         const payloadMessages = [
@@ -204,6 +240,10 @@ Instructions for updating the plan and tasks:
             messages: payloadMessages,
             stream: false,
             tools: TOOLS_SCHEMA,
+            options: {
+              num_predict: 4096,
+              temperature: 0.7
+            }
           }),
           signal: ac.signal,
         });
@@ -216,6 +256,9 @@ Instructions for updating the plan and tasks:
 
         const data = await res.json();
         responseMsg = data.message;
+        inputTokens = data.prompt_eval_count || 0;
+        outputTokens = data.eval_count || 0;
+        costUsd = 0;
       }
 
       if (responseMsg.tool_calls && responseMsg.tool_calls.length > 0) {
@@ -233,6 +276,9 @@ Instructions for updating the plan and tasks:
           content: responseMsg.content || "",
           toolInvocations: invocations,
           geminiParts: responseMsg.geminiParts,
+          inputTokens,
+          outputTokens,
+          costUsd
         };
 
         updateLog((prev) => [...prev, asstMsg]);
@@ -248,6 +294,7 @@ Instructions for updating the plan and tasks:
               inv.name,
               inv.args,
               workspaceId,
+              settings,
               (chunkStr) => {
                 completedInvocations[i].result =
                   typeof chunkStr === "string"
@@ -317,6 +364,9 @@ Instructions for updating the plan and tasks:
           role: "assistant",
           content: responseMsg.content,
           geminiParts: responseMsg.geminiParts,
+          inputTokens,
+          outputTokens,
+          costUsd
         };
         updateLog((prev) => [...prev, finalMsg]);
         break;

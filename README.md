@@ -56,11 +56,14 @@
 - **Instant Previews:** Test layouts, scripts, and endpoints inside a secure, fully reactive iframe with responsive viewport overrides.
 - **خادم وكيل ذكي للـ assets:** يحل مشكلة استدعاء الملفات ذات المسارات المطلقة (Absolute paths) داخل الإطار (Iframe) بفضل Service Worker يعيد كتابة المسارات ديناميكياً.
 
-### 🤖 3. Multi-Agent AI Core | نظام ذكاء اصطناعي متعدد الوكلاء
-- **Google Gemini Integration:** State-of-the-art server-side integration powered by the official `@google/genai` SDK for complex code generation, debugging, and environment reasoning.
-- **Local Ollama Integration:** Dynamic support for offline, locally loaded LLMs directly mapping developer prompts.
-- **Context-Aware Reasoning:** Seamlessly feeds workspace directory maps, file contents, and error outputs directly into the LLMs.
-- **مساعد برمجى متكامل:** يدعم جيميناي (Gemini API) على الطرف الخلفي (Backend) و أوبن لاما (Ollama) لتعديل وضخ الأكواد وحل المشكلات برمجياً دون مغادرة البيئة.
+### 🤖 3. Multi-Agent AI Core & Background Orchestration | نظام ذكاء اصطناعي متعدد الوكلاء التفاعلي
+- **Asynchronous Orchestration:** Spawn specialized sub-agents (Researcher, Coder, Reviewer, Debugger, Planner) synchronously or asynchronously in the background (`background: true`).
+- **Timeout & Iteration Safety:** Explicitly cap sub-agent loop depth (`maxIterations`) and execute runs with hard timeouts (`timeoutSeconds`) powered by WebSocket-based abort controller tunnels.
+- **Codebase RAG & AST Indexing:** Dynamic workspace symbol-aware indexing (TypeScript Compiler API for JS/TS, pattern blocks for Python) matching semantic cosine vectors (Gemini `text-embedding-004`) and sparse keyword weights (TF-IDF).
+- **Self-Healing Search:** RAG searches automatically construct project indexes in the background on the fly if missing, requiring zero setup.
+- **Context Guardrails & Cost Dashboard:** Hard caps on token consumption, output bounds (`maxOutputTokens: 4096`), file read limits (~32KB characters truncation), and automatic base64 visual screenshot stripping to prevent context window bloat and loop freezes.
+- **مساعد برمجي متطور تفاعلي:** نظام وكلاء ذكاء اصطناعي تفاعلي يدعم التشغيل المتوازي وفي الخلفية، والتحكم بالوقت الأقصى للتشغيل والخطوات لتفادي التكرار اللا نهائي.
+- **محرك بحث كود متطور (RAG):** محرك مدمج يبني الفهرس اللغوي والرمزي للتعليمات البرمجية تلقائياً ويطابق العبارات عبر التضمينات الدلالية (Gemini Embeddings) والبحث المفتاحي (TF-IDF).
 
 ### 📁 4. Reactive Workspace and File System Explorer | مدير مساحات العمل والملفات
 - **Dynamic File Tree:** Fully responsive tree component mapping real file directories on the server. Features search, creation, editing, and immediate syncing.
@@ -618,6 +621,52 @@ ws.send(JSON.stringify({
 ---
 
 ## 🚀 Advanced Features / الميزات المتقدمة
+
+### Codebase RAG & AST Indexing / نظام استرجاع الأكواد الدلالي والفهرسة الرمزية
+
+The platform features a built-in symbol-aware **Retrieval-Augmented Generation (RAG)** engine to locate code snippets dynamically:
+1. **Symbol-Aware AST Chunking:** Scans workspace files (TypeScript, JavaScript, Python, HTML, CSS, JSON, Markdown). JS/TS files are parsed using the native TypeScript compiler AST parser; Python files are parsed using indentation block layouts to isolate clean function and class declarations.
+2. **Hybrid Retrieval Scorer:**
+   - **Semantic Similarity:** Computes cosine vector similarity using Google Gemini's `text-embedding-004` embeddings API.
+   - **Keyword Relevance:** Calculates word term frequency (TF-IDF) focusing on file paths and symbol names.
+   - **Merged Scoring:** Computes `Score = (TF-IDF * 0.4) + (Semantic * 0.6)` for top-tier matching.
+3. **Zero-Configuration indexing:** If the index doesn't exist, search routes build it automatically in the background, keeping codebase search zero-setup.
+
+*REST API endpoints:*
+* `POST /api/rag/status` - Checks if index files exist.
+* `POST /api/rag/index` - Rebuilds workspace symbol index and embeddings.
+* `POST /api/rag/search` - Queries the codebase and returns top matching snippets.
+
+*Agent Tools:*
+* `search_codebase_rag({ query, limit })`
+* `index_codebase_rag()`
+
+---
+
+### Asynchronous Multi-Agent Background Orchestration / تشغيل الوكلاء في الخلفية
+
+For complex refactoring, planning, or debugging pipelines, the orchestrator allows launching specialized agents concurrently in the background:
+1. **Asynchronous Spawning:** Pass `background: true` to `invoke_subagent` or `invoke_parallel_subagents` to spin up background loops immediately, returning a running handle.
+2. **Iteration and Timeout Guards:** Specify `maxIterations` (1-30) and `timeoutSeconds` (e.g. 120 seconds) to prevent runaway loops or OOM crashes in local models. Timeout triggers trigger abort controller signals dynamically.
+3. **Status Tracking & Querying:**
+   - Use `list_subagents` to list all spawned background workers and their execution timestamps.
+   - Use `get_subagent_status({ agentId })` to poll a background worker's result, execution logs, and final report.
+
+*Agent Tools:*
+* `invoke_subagent({ agentType, task, maxIterations, timeoutSeconds, background })`
+* `invoke_parallel_subagents({ agents: [{ agentType, task, maxIterations, timeoutSeconds }], background })`
+* `get_subagent_status({ agentId })`
+* `list_subagents()`
+
+---
+
+### Token Efficiency & Context Safety / حماية السياق وكفاءة التوكنز
+
+To avoid local LLM crashes or expensive token bloat, the platform implements context guardrails:
+1. **Line-Range Reading:** Large files are truncated to ~32KB characters by filesystem endpoints. The system instructs LLMs to use `read_file_lines` for targeted reads.
+2. **Screenshot Payload Stripping:** Tool execution hooks catch base64 image data URLs from `browser_screenshot` and replace them with a tiny placeholder before sending message arrays to the LLM. This prevents text payload bloat while keeping full images rendering in the IDE chat view.
+
+---
 
 ### Custom Tool Development / تطوير الأدوات المخصصة
 
