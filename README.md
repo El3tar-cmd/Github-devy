@@ -274,7 +274,476 @@ The innovative terminal automatically adjusts depending on network settings:
 
 ---
 
-### 📄 License
+## ⚙️ Configuration / الإعدادات
+
+### Environment Variables / متغيرات البيئة
+
+Create a `.env` file in the root directory:
+
+```env
+# AI Configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+OLLAMA_URL=http://localhost:11434
+
+# Server Configuration
+PORT=9876
+NODE_ENV=development
+
+# GitHub Integration
+GITHUB_TOKEN=your_github_token_here
+
+# Workspace Configuration
+WORKSPACE_ROOT=.agent_workspace
+MAX_WORKSPACE_SIZE=1073741824
+```
+
+### Settings Structure / هيكل الإعدادات
+
+The application settings are managed through the Settings interface:
+
+```typescript
+interface Settings {
+  // AI Provider Selection
+  apiProvider: "ollama" | "gemini";
+  
+  // Ollama Configuration
+  ollamaUrl: string;
+  ollamaModel: string;
+  
+  // Gemini Configuration
+  geminiApiKey: string;
+  geminiModel: string;
+  
+  // GitHub Integration
+  repoUrl: string;
+  githubToken: string;
+  
+  // AI Behavior
+  systemPrompt: string;
+  enableAutocomplete: boolean;
+  planModeActive: boolean;
+}
+```
+
+### Workspace Configuration / إعداد مساحات العمل
+
+Each workspace can have its own configuration:
+
+```json
+{
+  "name": "my-project",
+  "id": "workspace-123",
+  "settings": {
+    "nodeVersion": "18",
+    "port": 3000,
+    "autoStart": true,
+    "gitIntegration": true
+  },
+  "created": "2024-01-01T00:00:00Z",
+  "lastModified": "2024-01-02T12:00:00Z"
+}
+```
+
+---
+
+## 📡 API Reference / مرجع واجهة البرمجة
+
+### REST API Endpoints / نقاط نهاية REST API
+
+#### Workspace Management / إدارة مساحات العمل
+
+```typescript
+// List all workspaces
+GET /api/workspaces
+
+// Create new workspace
+POST /api/workspace/create
+{
+  name: string;
+  template?: string;
+}
+
+// Switch workspace
+POST /api/workspace/switch
+{
+  workspaceId: string;
+}
+
+// Delete workspace
+DELETE /api/workspace/:id
+```
+
+#### File System Operations / عمليات نظام الملفات
+
+```typescript
+// List directory contents
+POST /api/fs/list
+{
+  workspaceId: string;
+  path: string;
+}
+
+// Read file content
+POST /api/fs/read
+{
+  workspaceId: string;
+  path: string;
+}
+
+// Write file content
+POST /api/fs/write
+{
+  workspaceId: string;
+  path: string;
+  content: string;
+}
+
+// Delete file/directory
+POST /api/fs/delete
+{
+  workspaceId: string;
+  path: string;
+}
+
+// Search files
+POST /api/fs/search
+{
+  workspaceId: string;
+  query: string;
+  path?: string;
+}
+```
+
+#### Command Execution / تنفيذ الأوامر
+
+```typescript
+// Execute command
+POST /api/cmd/exec
+{
+  workspaceId: string;
+  command: string;
+  sessionId?: string;
+}
+
+// Get command output
+GET /api/cmd/output/:sessionId
+
+// Kill process
+POST /api/cmd/kill
+{
+  sessionId: string;
+}
+```
+
+#### Git Operations / عمليات Git
+
+```typescript
+// Get repository status
+POST /api/git/status
+{
+  workspaceId: string;
+}
+
+// Initialize repository
+POST /api/git/init
+{
+  workspaceId: string;
+}
+
+// Clone repository
+POST /api/git/clone
+{
+  workspaceId: string;
+  url: string;
+}
+
+// Commit changes
+POST /api/git/commit
+{
+  workspaceId: string;
+  message: string;
+  files?: string[];
+}
+
+// Push changes
+POST /api/git/push
+{
+  workspaceId: string;
+  force?: boolean;
+}
+
+// Pull changes
+POST /api/git/pull
+{
+  workspaceId: string;
+}
+```
+
+#### AI Integration / تكامل الذكاء الاصطناعي
+
+```typescript
+// Generate AI response (Gemini)
+POST /api/gemini/chat
+{
+  messages: ChatMessage[];
+  model: string;
+  tools?: Tool[];
+}
+
+// Generate AI response (Ollama)
+POST /api/ollama/chat
+{
+  model: string;
+  messages: ChatMessage[];
+  tools?: Tool[];
+}
+
+// Stream AI response
+POST /api/gemini/stream
+{
+  messages: ChatMessage[];
+  model: string;
+}
+```
+
+#### Database Operations / عمليات قاعدة البيانات
+
+```typescript
+// List databases
+POST /api/db/list
+{
+  workspaceId: string;
+}
+
+// Execute query
+POST /api/db/query
+{
+  workspaceId: string;
+  dbPath: string;
+  query: string;
+}
+
+// Get tables
+POST /api/db/tables
+{
+  workspaceId: string;
+  dbPath: string;
+}
+```
+
+### WebSocket API / واجهة WebSocket
+
+#### Terminal Connection / اتصال الطرفية
+
+```javascript
+// Connect to terminal WebSocket
+const ws = new WebSocket(`ws://localhost:9876/terminal?workspaceId=${workspaceId}`);
+
+// Send command
+ws.send(JSON.stringify({
+  type: 'command',
+  command: 'npm run dev',
+  sessionId: 'session-123'
+}));
+
+// Receive output
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === 'output') {
+    console.log(data.output);
+  }
+};
+
+// Resize terminal
+ws.send(JSON.stringify({
+  type: 'resize',
+  cols: 80,
+  rows: 24
+}));
+```
+
+#### Event Types / أنواع الأحداث
+
+- `output`: Terminal output data
+- `error`: Error messages
+- `exit`: Process exit event
+- `status`: Connection status updates
+
+---
+
+## 🚀 Advanced Features / الميزات المتقدمة
+
+### Custom Tool Development / تطوير الأدوات المخصصة
+
+Create custom AI tools:
+
+```typescript
+interface Tool {
+  name: string;
+  description: string;
+  parameters: any;
+  execute: (params: any) => Promise<any>;
+}
+
+const customTool: Tool = {
+  name: 'custom_operation',
+  description: 'Performs custom operation',
+  parameters: {
+    type: 'object',
+    properties: {
+      input: { type: 'string' }
+    }
+  },
+  execute: async (params) => {
+    // Custom logic here
+    return { result: 'success' };
+  }
+};
+```
+
+### Plugin Development / تطوير الإضافات
+
+Extend functionality with plugins:
+
+```typescript
+interface Plugin {
+  name: string;
+  version: string;
+  init: (app: Express) => void;
+  routes: Router[];
+}
+
+const myPlugin: Plugin = {
+  name: 'my-plugin',
+  version: '1.0.0',
+  init: (app) => {
+    // Initialize plugin
+  },
+  routes: [
+    // Custom routes
+  ]
+};
+```
+
+### Security Best Practices / أفضل ممارسات الأمان
+
+1. **Workspace Isolation**: Ensure proper sandboxing
+2. **API Key Protection**: Never expose keys in client code
+3. **Input Validation**: Validate all user inputs
+4. **Rate Limiting**: Implement API rate limits
+5. **HTTPS Only**: Use HTTPS in production
+6. **Regular Updates**: Keep dependencies updated
+
+### Performance Optimization / تحسين الأداء
+
+1. **Enable gzip compression**
+2. **Configure CDN for static assets**
+3. **Enable HTTP/2**
+4. **Optimize database queries**
+5. **Implement caching strategies**
+
+---
+
+## 🔧 Troubleshooting / حل المشاكل
+
+### Common Issues / المشاكل الشائعة
+
+#### Terminal Connection Issues / مشاكل اتصال الطرفية
+
+**Problem**: Terminal not connecting or showing errors
+
+**Solutions**:
+1. Check WebSocket port accessibility
+2. Verify firewall settings
+3. Try HTTP fallback mode
+4. Check workspace permissions
+
+#### AI Integration Problems / مشاكل تكامل الذكاء الاصطناعي
+
+**Problem**: AI responses failing or timing out
+
+**Solutions**:
+1. Verify API keys are correct
+2. Check network connectivity
+3. Ensure Ollama is running (for local models)
+4. Reduce context window size
+
+#### File System Errors / أخطاء نظام الملفات
+
+**Problem**: Cannot read/write files
+
+**Solutions**:
+1. Check workspace permissions
+2. Verify disk space availability
+3. Check file system integrity
+4. Ensure paths are correct
+
+#### Build Failures / فشل البناء
+
+**Problem**: Build process fails
+
+**Solutions**:
+1. Clear node_modules and reinstall
+2. Update dependencies
+3. Check TypeScript errors
+4. Verify environment variables
+
+### Debug Mode / وضع التصحيح
+
+Enable debug logging:
+
+```env
+DEBUG=github-devy:*
+NODE_ENV=development
+```
+
+### Log Files / ملفات السجلات
+
+Check application logs:
+
+```bash
+# Terminal logs
+tail -f .agent_workspace/[workspace-id]/terminal.log
+
+# Error logs
+tail -f logs/error.log
+
+# Access logs
+tail -f logs/access.log
+```
+
+---
+
+## 🤝 Contributing / المساهمة
+
+We welcome contributions! Please see our contributing guidelines for details.
+
+### Development Workflow / سير العمل التطويري
+
+1. Fork the repository
+2. Create feature branch
+3. Make your changes
+4. Add tests
+5. Submit pull request
+
+### Code Review Process / عملية مراجعة الكود
+
+1. Automated checks pass
+2. Manual review by maintainers
+3. Feedback integration
+4. Approval and merge
+
+### Coding Standards / معايير البرمجة
+
+- **TypeScript**: Strict mode enabled
+- **React**: Functional components with hooks
+- **Styling**: Tailwind CSS utility classes
+- **Formatting**: Prettier configuration
+- **Linting**: ESLint with TypeScript rules
+
+---
+
+## 📄 License / الترخيص
 
 Professional Workspace Project designed & crafted perfectly to bridge developer ecosystems with generative AI workflows.
 
