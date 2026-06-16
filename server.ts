@@ -50,7 +50,27 @@ app.use('/api/package', packageRouter);
 // Setup Vite for Dev / Static files for Prod
 async function startServer() {
   app.get('/docs', (req, res) => {
-    res.sendFile(path.resolve('docs.html'));
+    res.sendFile(path.resolve('docs/docs.html'));
+  });
+
+  // Serve documentation files
+  app.get('/docs/:file', (req, res) => {
+    const fileName = req.params.file;
+    const filePath = path.resolve('docs', fileName);
+    
+    // Security check: prevent directory traversal
+    const safePath = path.normalize(filePath).replace(/^\.\.\//, '');
+    const resolvedPath = path.resolve('docs', safePath);
+    
+    if (!resolvedPath.startsWith(path.resolve('docs'))) {
+      return res.status(403).send('Access denied');
+    }
+    
+    if (fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isFile()) {
+      res.sendFile(resolvedPath);
+    } else {
+      res.status(404).send('Documentation file not found');
+    }
   });
 
   if (!isProductionServer) {

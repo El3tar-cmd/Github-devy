@@ -83,11 +83,11 @@
 ```
   +-------------------------------------------------------------+
   |                        Github-devy                          |
-  |                       Client (Vite)                         |
+  |                    Client (Vite + React)                      |
   +-------------------------------------------------------------+
          |                       |                        |
-         | (WS / HTTP)           | (Previews)             | (API Route Proxies &
-         v                       v                        |  Server-side Secrets)
+         | (WS / HTTP)           | (Previews)             | (API Routes &
+         v                       v                        |  Documentation)
   +---------------+      +----------------+               v
   |  Interactive  |      | Service Worker |      +--------------------+
   |   Terminal    |      |  Proxy Interceptor |  | Google Gemini Core |
@@ -99,13 +99,22 @@
                                  v
                   +------------------------------+
                   |     Express Server Engine    |
-                  |     Node.js Port 3000        |
+                  |     Node.js Port 9876        |
                   +------------------------------+
+         |                       |                        |
+         v                       v                        v
+  +--------------+   +----------------+   +------------------+
+  |  API Routes  |   |  WebSocket     |   |  Documentation   |
+  |  (REST/HTTP) |   |  Handlers      |   |  System          |
+  +--------------+   +----------------+   +------------------+
+         |                       |                        |
+         +-----------------------+------------------------+
                                  |
-                        +-----------------+
-                        | Secure Sandbox  |
-                        | .agent_workspace|
-                        +-----------------+
+                                 v
+                  +------------------------------+
+                  |     Secure Sandbox  |
+                  |     .agent_workspace     |
+                  +------------------------------+
 ```
 
 ---
@@ -144,7 +153,7 @@
    ```bash
    npm run dev
    ```
-   *The server dynamically launches on port `3000` with live proxy systems.*
+   *The server dynamically launches on port `9876` with live proxy systems.*
 
 4. **Production Build & Compilation:**
    ```bash
@@ -163,7 +172,19 @@ Github-devy/
 ├── .gitignore                 # Git ignore patterns
 ├── build-server.js            # Server build compilation script
 ├── dist/                      # Compiled distribution files
-├── docs.html                  # Interactive documentation page
+├── docs/                      # Comprehensive documentation suite
+│   ├── INDEX.md              # Documentation navigation hub
+│   ├── DOCUMENTATION.md      # Complete system documentation
+│   ├── API_REFERENCE.md       # Comprehensive API documentation
+│   ├── DEVELOPMENT_GUIDE.md  # Developer contribution guide
+│   ├── DEPLOYMENT_GUIDE.md   # Deployment and operations guide
+│   ├── TROUBLESHOOTING_GUIDE.md # Issue resolution guide
+│   ├── CONTRIBUTING_GUIDE.md # Contribution guidelines
+│   ├── QUICK_START.md        # Quick start guide
+│   ├── MIGRATION_GUIDE.md    # Version migration guide
+│   ├── FAQ.md               # Frequently asked questions
+│   ├── CHANGELOG.md         # Version history
+│   └── docs.html            # Interactive documentation experience
 ├── index.html                 # Main SPA entry point
 ├── metadata.json              # Project metadata
 ├── package.json               # Dependency and build configuration
@@ -239,6 +260,31 @@ Github-devy/
 │   └── platform_test.js       # Platform compatibility tests
 └── node_modules/             # NPM dependencies
 ```
+
+---
+
+## 📚 Documentation / التوثيق
+
+Comprehensive documentation is available in the `/docs` directory:
+
+### Core Documentation
+- **[📚 Main Documentation](docs/DOCUMENTATION.md)** - Complete system documentation
+- **[📘 API Reference](docs/API_REFERENCE.md)** - Complete API documentation
+- **[🛠️ Development Guide](docs/DEVELOPMENT_GUIDE.md)** - Developer contribution guide
+- **[🚀 Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Deployment and operations
+- **[🔧 Troubleshooting Guide](docs/TROUBLESHOOTING_GUIDE.md)** - Issue resolution
+- **[🤝 Contributing Guide](docs/CONTRIBUTING_GUIDE.md)** - Contribution guidelines
+- **[📋 Changelog](docs/CHANGELOG.md)** - Version history
+- **[📖 Documentation Index](docs/INDEX.md)** - Documentation navigation
+
+### Interactive Documentation
+- **[🌐 Live Documentation](/docs)** - Interactive documentation with API tester
+
+### Quick Links
+- [Getting Started](#-getting-started--كيفية-التشغيل-محلياً)
+- [API Reference](docs/API_REFERENCE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING_GUIDE.md)
+- [Contributing](docs/CONTRIBUTING_GUIDE.md)
 
 ---
 
