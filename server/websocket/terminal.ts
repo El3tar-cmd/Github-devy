@@ -116,22 +116,31 @@ export function setupWebSocketTerminal(server: http.Server) {
 
       let session = terminalSessions.get(sessionKey);
       if (!session) {
-        let selectedShell = process.env.SHELL || '';
-        if (!selectedShell || !existsSync(selectedShell)) {
-          if (existsSync('/usr/bin/bash')) {
-            selectedShell = '/usr/bin/bash';
-          } else if (existsSync('/bin/bash')) {
-            selectedShell = '/bin/bash';
-          } else if (existsSync('/usr/bin/sh')) {
-            selectedShell = '/usr/bin/sh';
-          } else if (existsSync('/bin/sh')) {
-            selectedShell = '/bin/sh';
-          } else {
-            selectedShell = 'sh';
+        let selectedShell = '';
+        let shellArgs: string[] = [];
+
+        if (process.platform === 'win32') {
+          selectedShell = process.env.COMSPEC || 'cmd.exe';
+          shellArgs = [];
+        } else {
+          selectedShell = process.env.SHELL || '';
+          if (!selectedShell || !existsSync(selectedShell)) {
+            if (existsSync('/usr/bin/bash')) {
+              selectedShell = '/usr/bin/bash';
+            } else if (existsSync('/bin/bash')) {
+              selectedShell = '/bin/bash';
+            } else if (existsSync('/usr/bin/sh')) {
+              selectedShell = '/usr/bin/sh';
+            } else if (existsSync('/bin/sh')) {
+              selectedShell = '/bin/sh';
+            } else {
+              selectedShell = 'sh';
+            }
           }
+          shellArgs = ['-i'];
         }
 
-        const bash = spawn(selectedShell, ['-i'], { 
+        const bash = spawn(selectedShell, shellArgs, { 
           env: { 
             ...process.env, 
             TERM: 'xterm-256color',

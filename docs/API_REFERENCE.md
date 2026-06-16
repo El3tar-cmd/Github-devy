@@ -91,6 +91,25 @@ DELETE /api/workspace/:id
   "message": "Workspace deleted successfully"
 }
 ```
+#### Get Host Environment Details
+
+```http
+GET /api/environment/detect
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "platform": "linux",
+  "shell": "/bin/bash",
+  "isWindows": false,
+  "isLinux": true,
+  "isMac": false,
+  "nodeVersion": "v20.10.0",
+  "cwd": "/data/data/com.termux/files/home/Github-devy"
+}
+```
 
 ---
 

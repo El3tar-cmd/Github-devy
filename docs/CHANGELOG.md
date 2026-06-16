@@ -7,47 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-16
+
 ### Added
-- Comprehensive documentation suite
-- API reference guide
-- Development guide
-- Deployment guide
-- Troubleshooting guide
-- Contributing guide
-- Advanced AI integration features
-- Multi-agent system with tool calling
-- Ollama local model integration
-- Git operations interface
-- Package management system
-- Database management interface
-- Debugger panel
-- AI-powered UI builder
-- Project planning features
-- Port management system
-- Advanced terminal with dual-fallback
-- Browser preview with Service Worker proxy
+- **Agent Trajectory Visualizer & Replay Panel:** Added a visual timeline component that traces the AI agent's ReAct cycle steps (Thought ➔ Action ➔ Observation) in real-time, complete with token usage and USD session cost counters.
+- **Self-Healing Terminal Autopilot:** Integrated a self-correcting terminal loop that catches crashes and exit codes, calls an agent to diagnose the issue, writes code fixes, and automatically reruns scripts.
+- **AST Code Dependency Graph:** Created an SVG-rendered, physics-based codebase graph parser analyzing TypeScript Compiler imports and symbols with zoom/pan and double-click editor integration.
+- **Third-Party API Sandbox Mocking Suite:** Added mock endpoints and webhooks for Stripe, Auth0, and Twilio APIs with built-in logging and custom webhook triggers.
+- **Mobile File Tree Collapsing & Markdown Support:** Added button to toggle file tree visibility on small screens and mapped Monaco code editor extensions to load rich formatted Markdown side-by-side previews.
+- **Max Agent Steps Configuration:** Added settings slider to configure agent iteration caps up to 100 steps.
+- **Local LM Studio Integration:** Deep local provider support querying completions endpoints and mapping arguments and tool schemas.
+- **Automatic Host Environment Detection:** Added `/api/environment/detect` API returning platform details, process default shell, separator styles, and cwd.
 
 ### Changed
-- Improved workspace management
-- Enhanced security features
-- Optimized performance
-- Updated dependencies
-- Improved error handling
-- Better logging system
+- **Cross-Platform File Search:** Replaced the Unix-only `grep` command spawn with a 100% native Node.js text-search crawler.
+- **Dynamic Python Executable:** Replaced hardcoded `python3` spawns in DB manager with dynamic platform check (`python` on Windows vs `python3` on macOS/Linux).
+- **Terminal Shell Normalization:** Updated terminal websocket to spawn `process.env.COMSPEC` (`cmd.exe`) under Windows, and fall back to Unix user shells (`process.env.SHELL`) under Termux/Linux.
+- **Tilde Expansion Fallbacks:** Configured tilde folder resolver to use Windows `process.env.USERPROFILE` if `process.env.HOME` is not defined.
 
-### Fixed
-- Terminal connection issues
-- WebSocket fallback problems
-- File system permission errors
-- API rate limiting
-- Memory leaks in long-running processes
-
-### Security
-- Added input validation
-- Implemented rate limiting
-- Enhanced API key protection
-- Added security headers
-- Improved XSS prevention
 ## [1.1.0] - 2026-06-16
 
 ### Added

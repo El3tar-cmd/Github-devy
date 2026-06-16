@@ -26,10 +26,15 @@ router.post('/start', async (req, res) => {
     const sessionId = `dbg_${Date.now()}_${++debugSessionCounter}`;
     
     let selectedShell: string | boolean = true;
-    if (existsSync('/bin/bash')) {
-      selectedShell = '/bin/bash';
-    } else if (existsSync('/bin/sh')) {
-      selectedShell = '/bin/sh';
+    if (process.platform !== 'win32') {
+      const envShell = process.env.SHELL || '';
+      if (envShell && existsSync(envShell)) {
+        selectedShell = envShell;
+      } else if (existsSync('/bin/bash')) {
+        selectedShell = '/bin/bash';
+      } else if (existsSync('/bin/sh')) {
+        selectedShell = '/bin/sh';
+      }
     }
 
     const child = spawn(command, {

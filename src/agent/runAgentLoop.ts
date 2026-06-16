@@ -4,6 +4,27 @@ import { TOOLS_SCHEMA } from "./tools/toolsSchema";
 import { submitGeminiRequest } from "../geminiApi";
 import { summarizeHistory } from "./summarizeHistory";
 
+let cachedEnv: any = null;
+async function getDetectedEnvironment() {
+  if (cachedEnv) return cachedEnv;
+  try {
+    const res = await fetch("/api/environment/detect");
+    if (res.ok) {
+      cachedEnv = await res.json();
+      return cachedEnv;
+    }
+  } catch (e) {
+    console.error("Failed to detect environment", e);
+  }
+  return {
+    platform: "linux",
+    shell: "/bin/sh",
+    isWindows: false,
+    isLinux: true,
+    isMac: false
+  };
+}
+
 interface RunAgentLoopParams {
   currentMessages: ChatMessage[];
   updateLog: (updater: ChatMessage[] | ((p: ChatMessage[]) => ChatMessage[])) => void;
@@ -105,7 +126,7 @@ export async function runAgentLoop({
     }
   }
 
-  const MAX_ITERATIONS = 30;
+  const MAX_ITERATIONS = settings.maxIterations || 30;
   let iterationCounter = 0;
 
   try {
@@ -118,7 +139,7 @@ export async function runAgentLoop({
       }
 
       let planContext = "";
-      if (settings.planModeActive && workspaceId) {
+      if (workspaceId) {
         try {
           const planRes = await fetch("/api/fs/read", {
             method: "POST",
@@ -167,17 +188,34 @@ Instructions for updating the plan and tasks:
       }
 
       const baseSystemPrompt = settings.systemPrompt || "You are Devy, an AI coding assistant.";
-      
+      const env = await getDetectedEnvironment();
+
+      let projectAbsPath = `/data/data/com.termux/files/home/Github-devy/.agent_workspace/${workspaceId}`;
+      if (env.cwd) {
+        const pathSeparator = env.isWindows ? '\\' : '/';
+        projectAbsPath = `${env.cwd}${pathSeparator}.agent_workspace${pathSeparator}${workspaceId}`;
+      }
+
       const activeProjectContext = workspaceId
         ? `\n\n[ACTIVE WORKSPACE CONTEXT]:
 - Active Project Folder Name: "${workspaceId}"
 - Workspace Path: "./" (All your file system and terminal tools run relative to this folder)
-- Project Absolute Path on device: "/data/data/com.termux/files/home/Github-devy/.agent_workspace/${workspaceId}"`
+- Project Absolute Path on device: "${projectAbsPath}"`
         : "";
+
+      const detectedEnvContext = `\n\n[DETECTED HOST ENVIRONMENT]:
+- Host Operating System: "${env.platform}" (Windows: ${env.isWindows}, Linux: ${env.isLinux}, macOS: ${env.isMac})
+- Terminal Default Shell: "${env.shell}"
+- Path Separator: "${env.isWindows ? '\\' : '/'}"
+
+[CRITICAL ENVIRONMENT COMPATIBILITY DIRECTIVE]:
+- You MUST construct shell commands, scripts, packages, and file paths compatible with the detected host environment.
+- On Windows, always write Windows compatible commands (e.g. using 'dir', 'copy', or 'del' in cmd.exe) and paths with backslashes.
+- On Linux/macOS, use Unix standard paths and utilities.`;
 
       const systemPrompt = (historySummary
         ? `${baseSystemPrompt}\n\n[CONVERSATION HISTORY SUMMARY - READ THIS TO KNOW WHAT HAPPENED BUT DO NOT MENTION IT TO USER UNLESS RELEVANT]:\n${historySummary}`
-        : baseSystemPrompt) + activeProjectContext + planContext;
+        : baseSystemPrompt) + activeProjectContext + planContext + detectedEnvContext;
 
       const messagesToSend = sanitizeMessagesForLLM(summarizedCount > 0 ? iterMessages.slice(summarizedCount) : iterMessages);
 
@@ -198,6 +236,95 @@ Instructions for updating the plan and tasks:
         inputTokens = (data as any).inputTokens || 0;
         outputTokens = (data as any).outputTokens || 0;
         costUsd = (data as any).costUsd || 0;
+      } else if (settings.apiProvider === "lmstudio") {
+        const baseUrl = settings.lmStudioUrl ? settings.lmStudioUrl.replace(/\/+$/, "") : "http://localhost:1234";
+        const payloadMessages = [
+          { role: "system", content: systemPrompt },
+          ...messagesToSend.flatMap<any>((m) => {
+            if (m.role === "tool") {
+              return (
+                m.toolInvocations?.map((inv) => ({
+                  role: "tool",
+                  content: inv.result,
+                  tool_call_id: inv.id,
+                  name: inv.name,
+                })) || []
+              );
+            }
+            if (m.role === "assistant" && m.toolInvocations?.length) {
+              return [
+                {
+                  role: "assistant",
+                  content: m.content || "",
+                  tool_calls: m.toolInvocations.map((inv) => ({
+                    id: inv.id,
+                    type: "function",
+                    function: {
+                      name: inv.name,
+                      arguments: typeof inv.args === "string" ? inv.args : JSON.stringify(inv.args),
+                    },
+                  })),
+                },
+              ];
+            }
+            return [{ role: m.role, content: m.content || "" }];
+          }),
+        ];
+
+        const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: settings.lmStudioModel || "local-model",
+            messages: payloadMessages,
+            stream: false,
+            tools: TOOLS_SCHEMA.map(t => ({
+              type: "function",
+              function: {
+                name: t.function.name,
+                description: t.function.description,
+                parameters: t.function.parameters
+              }
+            })),
+            temperature: 0.7,
+            max_tokens: 4096
+          }),
+          signal: ac.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(
+            `LM Studio API Error: ${(await res.text()).substring(0, 500)}`,
+          );
+        }
+
+        const data = await res.json();
+        const choice = data.choices?.[0];
+        if (!choice) throw new Error("No choices returned from LM Studio API");
+
+        const toolCalls = choice.message.tool_calls?.map((tc: any) => {
+          let parsedArgs = {};
+          try {
+            parsedArgs = typeof tc.function.arguments === "string" ? JSON.parse(tc.function.arguments) : tc.function.arguments;
+          } catch (e) {
+            parsedArgs = tc.function.arguments;
+          }
+          return {
+            id: tc.id || Math.random().toString(36).substring(7),
+            name: tc.function.name,
+            args: parsedArgs,
+            status: "running" as const
+          };
+        });
+
+        responseMsg = {
+          role: choice.message.role || "assistant",
+          content: choice.message.content || "",
+          tool_calls: toolCalls
+        };
+        inputTokens = data.usage?.prompt_tokens || 0;
+        outputTokens = data.usage?.completion_tokens || 0;
+        costUsd = 0;
       } else {
         // Ollama Flow
         const payloadMessages = [

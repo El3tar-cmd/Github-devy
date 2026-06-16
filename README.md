@@ -68,7 +68,38 @@
 ### 📁 4. Reactive Workspace and File System Explorer | مدير مساحات العمل والملفات
 - **Dynamic File Tree:** Fully responsive tree component mapping real file directories on the server. Features search, creation, editing, and immediate syncing.
 - **Workspace Sandboxing:** Create and switch between distinct developer workspaces with fully isolated dependency structures.
-- **متصفح ملفات مرن:** تحكم مرن في شجرة الملفات مع المزامنة اللحظية مع خادم لضمان دقة العمل مع إمكانية عزل المشاريع في مساحات عمل منفصلة.
+- **متصفح ملفات مرن:** تحكّم مرن في شجرة الملفات مع المزامنة اللحظية مع خادم لضمان دقة العمل مع إمكانية عزل المشاريع في مساحات عمل منفصلة.
+
+### 📉 5. Agent Trajectory Visualizer & Replay Panel | لوحة تتبع مسار الوكيل وإعادة التشغيل
+- **ReAct Loop Trace:** Beautiful vertical timeline rendering the thoughts, actions, and raw observations of the agent's ReAct cycle in real-time.
+- **Cost & Token Analytics:** Tracks cumulative input/output token counts and calculated USD session costs dynamically.
+- **لوحة تتبع تفصيلية:** تعرض خطوات تفكير الوكيل البرمجي (Thought)، والعمليات والأدوات التي استدعاها (Action)، والملاحظات والنتائج (Observation) في جدول زمني أنيق.
+
+### 🧠 6. Self-Healing Terminal Autopilot | التوجيه الذاتي وإصلاح الأخطاء تلقائياً
+- **Auto-Recovery Loop:** When a terminal run/test script fails with an exit code, the backend automatically triggers a recovery prompt to diagnose the crash logs, write code patches, and restart the process.
+- **إصلاح الأخطاء الذاتي:** عند تعثر أو فشل تشغيل أي أمر أو اختبار برمجي، يتدخل نظام التوجيه الذاتي تلقائياً لتشخيص الخطأ، وتطبيق التعديلات البرمجية، وإعادة التشغيل.
+
+### 📊 7. Codebase AST Dependency Graph | مخطط علاقات الأكواد الرمزي
+- **Dynamic Dependency Parsing:** Recursively processes JavaScript, TypeScript, and JSX/TSX files using the native TypeScript Compiler API.
+- **Interactive Network Visualization:** Maps file nodes and imports using dynamic SVG animations with pan, zoom, node drag, and double-click integration to jump to Monaco code lines.
+- **مخطط علاقات برمجية تفاعلي:** يحلل الارتباطات والاستيرادات (Imports) بين الملفات ويبني رسماً بيانياً تفاعلياً متحركاً لتسهيل استكشاف معمارية المشاريع الكبيرة.
+
+### 🔌 8. Third-Party API Sandbox Mocking Suite | محاكاة وتجربة خدمات الطرف الثالث
+- **Local Integration Mocks:** Provides sandboxed, local API mocks for popular platforms like Stripe (PaymentIntents/Checkout), Twilio (SMS Messages), and Auth0 (OAuth tokens/Userinfo).
+- **Webhook Simulator:** Fire custom trigger webhooks (such as Stripe `payment_intent.succeeded`) directly into target local hooks, complete with captured logs.
+- **بيئة محاكاة برمجية مدمجة:** تحاكي بوابات الدفع (Stripe) وخدمات الهوية (Auth0) والرسائل (Twilio) محلياً، مع محاكاة إرسال أحداث الـ Webhooks لتسهيل التجربة والاختبار دون تكلفة.
+
+### 📱 9. Mobile File Tree Toggle & Monaco MD Preview | واجهة متجاوبة ودعم كامل لملفات الماركدون
+- **Sidebar Minimizer:** Minimizes the file tree to full width (`w-0`) with a single click to optimize code editing workspace on phone screens.
+- **Monaco Markdown Rendering:** Configures Monaco to format `.md` file syntax highlighting, paired with a toggleable side-by-side rich HTML formatting preview.
+- **تخصيص كامل للشاشات والمستندات:** زر مخصص لطي شجرة الملفات لإعطاء مساحة أوسع للمحرر على الهواتف، مع دعم كامل لعرض ملفات Markdown وتنسيقها.
+
+### 🌐 10. Multi-Platform Support & LM Studio Integration | التوافق الكامل مع كافة الأنظمة ودمج LM Studio
+- **Dynamic Host OS Detection:** Queries server details at launch to inject platform properties (Windows, Linux, Termux) into prompts, ensuring compatible command and path builds.
+- **Native search fallback:** Uses a 100% native Node.js text-search directory walker replacing Unix `grep` commands for error-free search across Windows and Unix.
+- **Windows cmd.exe & Termux shell:** Spawns `cmd.exe` dynamically on Windows, and resolves Termux sandboxed shell paths (`process.env.SHELL`) on Android.
+- **LM Studio Integration:** Support local completions servers mimicking OpenAI chat APIs alongside Ollama and Gemini.
+- **دعم كافة أنظمة التشغيل ودمج LM Studio:** نظام ذكي يتعرف على بيئة التشغيل (Windows, Linux, Termux) ويكيف المسارات والأوامر تلقائياً، مع دمج كامل لخوادم LM Studio المحلية.
 
 ---
 
@@ -353,7 +384,7 @@ The application settings are managed through the Settings interface:
 ```typescript
 interface Settings {
   // AI Provider Selection
-  apiProvider: "ollama" | "gemini";
+  apiProvider: "ollama" | "gemini" | "lmstudio";
   
   // Ollama Configuration
   ollamaUrl: string;
@@ -362,6 +393,10 @@ interface Settings {
   // Gemini Configuration
   geminiApiKey: string;
   geminiModel: string;
+
+  // LM Studio Configuration
+  lmStudioUrl: string;
+  lmStudioModel: string;
   
   // GitHub Integration
   repoUrl: string;
@@ -371,6 +406,7 @@ interface Settings {
   systemPrompt: string;
   enableAutocomplete: boolean;
   planModeActive: boolean;
+  maxIterations: number;
 }
 ```
 

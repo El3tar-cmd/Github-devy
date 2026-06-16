@@ -60,7 +60,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     agentData.loadModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.ollamaUrl]);
+  }, [settings.apiProvider, settings.ollamaUrl, settings.lmStudioUrl]);
 
   const handleInitWorkspace = async () => {
     setInitLoading(true);

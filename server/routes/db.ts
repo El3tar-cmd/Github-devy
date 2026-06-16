@@ -77,7 +77,8 @@ except Exception as e:
     print(json.dumps({"success": False, "error": str(e)}))
 `;
 
-    const child = spawn('python3', ['-c', pythonScript, resolved, query]);
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const child = spawn(pythonCmd, ['-c', pythonScript, resolved, query]);
     let stdout = '';
     let stderr = '';
     
@@ -126,7 +127,8 @@ try:
 except Exception as e:
     print(json.dumps({"success": False, "error": str(e)}))
 `;
-    const child = spawn('python3', ['-c', pythonScript, resolved, query]);
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const child = spawn(pythonCmd, ['-c', pythonScript, resolved, query]);
     let stdout = '';
     child.stdout.on('data', (data) => { stdout += data.toString(); });
     child.on('close', () => {

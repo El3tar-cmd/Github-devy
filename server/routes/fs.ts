@@ -117,33 +117,62 @@ router.post('/delete', async (req, res) => {
   }
 });
 
+// Helper to recursively search files for a pattern natively
+async function searchFilesNative(dir: string, baseDir: string, pattern: string, caseSensitive: boolean = true): Promise<string> {
+  const ignoredDirs = ['.git', 'node_modules', '.chromium-profile', '.npm', '.cache', 'dist', 'build', 'out', 'venv', '.venv', '__pycache__'];
+  const matches: string[] = [];
+
+  async function walkAndSearch(currentDir: string) {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (ignoredDirs.includes(entry.name)) continue;
+      const fullPath = path.join(currentDir, entry.name);
+      
+      if (entry.isDirectory()) {
+        await walkAndSearch(fullPath);
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
+        try {
+          const content = await fs.readFile(fullPath, 'utf8');
+          // Simple binary check: if content contains null bytes, skip
+          if (content.includes('\u0000')) continue;
+
+          const lines = content.split(/\r?\n/);
+          const relPath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let isMatch = false;
+            if (caseSensitive) {
+              isMatch = line.includes(pattern);
+            } else {
+              isMatch = line.toLowerCase().includes(pattern.toLowerCase());
+            }
+
+            if (isMatch) {
+              matches.push(`${relPath}:${i + 1}:${line}`);
+              if (matches.length >= 1000) {
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          // Ignore files that cannot be read
+        }
+      }
+    }
+  }
+
+  await walkAndSearch(dir);
+  return matches.join('\n');
+}
+
 router.post('/search', async (req, res) => {
   try {
     const { pattern, directory = '.', workspaceId, caseSensitive = true } = req.body;
+    if (!pattern) return res.status(400).json({ error: 'pattern is required' });
     const { wDir } = await safePath(workspaceId, directory);
-    // Use grep to search, excluding large generated or lock/cache directories
-    const ignoredDirs = ['.git', 'node_modules', '.chromium-profile', '.npm', '.cache', 'dist', 'build', 'out', 'venv', '.venv', '__pycache__'];
-
-    const args = ['-rnI'];
-    if (!caseSensitive) args.push('-i');
-    for (const d of ignoredDirs) {
-      args.push(`--exclude-dir=${d}`);
-    }
-    args.push('--', pattern, '.');
-
-    const result = await new Promise<string>((resolve, reject) => {
-      const proc = spawn('grep', args, { cwd: wDir });
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', (d) => stdout += d.toString());
-      proc.stderr.on('data', (d) => stderr += d.toString());
-      proc.on('close', (code) => {
-        if (code === 0) resolve(stdout);
-        else if (code === 1) resolve(''); // no matches
-        else reject(new Error(stderr || `grep exited with code ${code}`));
-      });
-      proc.on('error', reject);
-    });
+    
+    const result = await searchFilesNative(wDir, wDir, pattern, caseSensitive);
     res.json({ matches: result || 'No matches found.' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

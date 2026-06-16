@@ -1,7 +1,9 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { useWorkspaceContext } from "../../contexts/WorkspaceContext";
 import { useAgentContext } from "../../contexts/AgentContext";
+import { FolderPlus, FolderMinus, Eye, BookOpen } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 // Import subcomponents
 import { FileTree } from "../FileTree";
@@ -14,10 +16,13 @@ import { DebuggerPanel } from "../DebuggerPanel";
 import { PackageManager } from "../PackageManager";
 import { AIBuilder } from "../AIBuilder";
 import { PlannerPanel } from "../PlannerPanel";
+import { TrajectoryPanel } from "../TrajectoryPanel";
+import { DependencyGraphPanel } from "../DependencyGraphPanel";
+import { SandboxPanel } from "../SandboxPanel";
 
 interface IdeLayoutProps {
-  ideTab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner";
-  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner") => void;
+  ideTab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner" | "trajectory" | "ast" | "sandbox";
+  setIdeTab: (tab: "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner" | "trajectory" | "ast" | "sandbox") => void;
   activeTab: "chat" | "ide";
 }
 
@@ -46,6 +51,21 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
   } = useWorkspaceContext();
 
   const { settings } = useAgentContext();
+
+  const [fileTreeCollapsed, setFileTreeCollapsed] = useState(() => 
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  const [isPreviewMd, setIsPreviewMd] = useState(false);
+
+  useEffect(() => {
+    setIsPreviewMd(false);
+  }, [selectedFile]);
+
+  const getLanguage = (filename: string) => {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    if (ext === "md" || ext === "markdown") return "markdown";
+    return ext || "plaintext";
+  };
 
   const editorRef = useRef<any>(null);
   const completionProviderRef = useRef<any[] | null>(null);
@@ -273,50 +293,103 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
           >
             UI Builder
           </button>
+          <button
+            onClick={() => setIdeTab("trajectory")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              ideTab === "trajectory"
+                ? "bg-[#2a2a32] text-emerald-400 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            Trajectory
+          </button>
+          <button
+            onClick={() => setIdeTab("ast")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              ideTab === "ast"
+                ? "bg-[#2a2a32] text-emerald-400 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            AST Graph
+          </button>
+          <button
+            onClick={() => setIdeTab("sandbox")}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              ideTab === "sandbox"
+                ? "bg-[#2a2a32] text-emerald-400 shadow-sm"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+            }`}
+          >
+            Sandbox
+          </button>
         </div>
-        {ideTab === "editor" && selectedFile && (
+        {ideTab === "editor" && (
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-mono text-slate-500 truncate max-w-[150px] md:max-w-xs block">
-              {selectedFile}
-            </span>
-
-            <span
-              className={`text-[10px] px-2 py-0.5 rounded transition-all font-sans font-medium flex items-center gap-1 ${
-                saveStatus === "saving"
-                  ? "text-amber-400 bg-amber-400/10 animate-pulse"
-                  : saveStatus === "unsaved"
-                  ? "text-blue-400 bg-blue-500/10"
-                  : "text-emerald-400 bg-emerald-500/10"
-              }`}
-            >
-              {saveStatus === "saving" && "جاري الحفظ تلقائياً..."}
-              {saveStatus === "unsaved" && "تغييرات غير محفوظة"}
-              {saveStatus === "saved" && "تم الحفظ تلقائياً"}
-            </span>
-
             <button
-              onClick={() => setIsDiffMode(!isDiffMode)}
-              className={`text-xs px-2 py-1 rounded transition-colors ${
-                isDiffMode ? "bg-emerald-500/20 text-emerald-400" : "bg-white/5 text-slate-300 hover:bg-white/10"
-              }`}
+              onClick={() => setFileTreeCollapsed(!fileTreeCollapsed)}
+              className="p-1.5 bg-white/5 hover:bg-white/10 rounded-md text-slate-300 transition-colors mr-1"
+              title={fileTreeCollapsed ? "Show File Tree" : "Hide File Tree"}
             >
-              Diff Mode
+              {fileTreeCollapsed ? <FolderPlus className="w-3.5 h-3.5" /> : <FolderMinus className="w-3.5 h-3.5" />}
             </button>
-            <button
-              onClick={() => {
-                saveFile(selectedFile, fileContent);
-              }}
-              className="text-xs px-2 py-1 bg-emerald-500 text-black rounded font-medium hover:bg-emerald-400 transition-colors"
-            >
-              Save
-            </button>
+            {selectedFile && (
+              <>
+                <span className="text-xs font-mono text-slate-500 truncate max-w-[150px] md:max-w-xs block">
+                  {selectedFile}
+                </span>
+
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded transition-all font-sans font-medium flex items-center gap-1 ${
+                    saveStatus === "saving"
+                      ? "text-amber-400 bg-amber-400/10 animate-pulse"
+                      : saveStatus === "unsaved"
+                      ? "text-blue-400 bg-blue-500/10"
+                      : "text-emerald-400 bg-emerald-500/10"
+                  }`}
+                >
+                  {saveStatus === "saving" && "جاري الحفظ تلقائياً..."}
+                  {saveStatus === "unsaved" && "تغييرات غير محفوظة"}
+                  {saveStatus === "saved" && "تم الحفظ تلقائياً"}
+                </span>
+
+                {(selectedFile.endsWith(".md") || selectedFile.endsWith(".markdown")) && (
+                  <button
+                    onClick={() => setIsPreviewMd(!isPreviewMd)}
+                    className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${
+                      isPreviewMd ? "bg-emerald-500/20 text-emerald-400 font-medium" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                    }`}
+                  >
+                    {isPreviewMd ? <BookOpen className="w-3 h-3 text-emerald-400" /> : <Eye className="w-3 h-3" />}
+                    <span>{isPreviewMd ? "Edit Code" : "Preview MD"}</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setIsDiffMode(!isDiffMode)}
+                  className={`text-xs px-2 py-1 rounded transition-colors ${
+                    isDiffMode ? "bg-emerald-500/20 text-emerald-400" : "bg-white/5 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  Diff Mode
+                </button>
+                <button
+                  onClick={() => {
+                    saveFile(selectedFile, fileContent);
+                  }}
+                  className="text-xs px-2 py-1 bg-emerald-500 text-black rounded font-medium hover:bg-emerald-400 transition-colors"
+                >
+                  Save
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
       <div className="flex-1 flex overflow-hidden">
         {/* Editor Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "editor" ? "" : "hidden"}`}>
-          <div className="w-56 overflow-y-auto border-r border-white/5 bg-[#0e0e11] shrink-0">
+          <div className={`overflow-y-auto border-r border-white/5 bg-[#0e0e11] shrink-0 transition-all duration-300 ${fileTreeCollapsed ? "w-0 opacity-0 overflow-hidden pointer-events-none" : "w-56"}`}>
             <FileTree
               key={workspaceId}
               tree={tree}
@@ -336,13 +409,19 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
           </div>
           <div className="flex-1 flex flex-col min-w-0 bg-[#0e0e11]">
             {selectedFile ? (
-              isDiffMode ? (
+              isPreviewMd ? (
+                <div className="flex-1 p-6 overflow-y-auto text-xs leading-relaxed select-text bg-[#09090b] markdown-body select-text">
+                  <div className="prose prose-invert prose-xs max-w-none">
+                    <ReactMarkdown>{fileContent}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : isDiffMode ? (
                 <DiffEditor
                   height="100%"
                   theme="vs-dark"
                   original={originalContent}
                   modified={fileContent}
-                  language={selectedFile.split(".").pop() || "plaintext"}
+                  language={getLanguage(selectedFile)}
                   options={{
                     minimap: { enabled: false },
                     readOnly: false,
@@ -360,7 +439,7 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
                   height="100%"
                   theme="vs-dark"
                   value={fileContent}
-                  language={selectedFile.split(".").pop() || "plaintext"}
+                  language={getLanguage(selectedFile)}
                   options={{
                     minimap: { enabled: false },
                     fontSize: 13,
@@ -446,6 +525,21 @@ export const IdeLayout: React.FC<IdeLayoutProps> = ({
         {/* Planner Tab */}
         <div className={`flex-1 flex overflow-hidden ${ideTab === "planner" ? "" : "hidden"}`}>
           {ideTab === "planner" && <PlannerPanel key={workspaceId} workspaceId={workspaceId} />}
+        </div>
+
+        {/* Trajectory Tab */}
+        <div className={`flex-1 flex overflow-hidden ${ideTab === "trajectory" ? "" : "hidden"}`}>
+          {ideTab === "trajectory" && <TrajectoryPanel />}
+        </div>
+
+        {/* AST Graph Tab */}
+        <div className={`flex-1 flex overflow-hidden ${ideTab === "ast" ? "" : "hidden"}`}>
+          {ideTab === "ast" && <DependencyGraphPanel workspaceId={workspaceId} setIdeTab={setIdeTab} />}
+        </div>
+
+        {/* Sandbox Tab */}
+        <div className={`flex-1 flex overflow-hidden ${ideTab === "sandbox" ? "" : "hidden"}`}>
+          {ideTab === "sandbox" && <SandboxPanel />}
         </div>
       </div>
     </div>

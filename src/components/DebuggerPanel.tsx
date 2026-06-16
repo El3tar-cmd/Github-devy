@@ -27,7 +27,134 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
   const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
   const [aiSuggestions, setAiSuggestions] = useState<string>("");
 
+  // Autopilot States
+  const [autopilot, setAutopilotState] = useState<boolean>(false);
+  const autopilotRef = useRef(false);
+  const setAutopilot = (val: boolean) => {
+    autopilotRef.current = val;
+    setAutopilotState(val);
+  };
+
+  const [autopilotWorking, setAutopilotWorkingState] = useState<boolean>(false);
+  const autopilotWorkingRef = useRef(false);
+  const setAutopilotWorking = (val: boolean) => {
+    autopilotWorkingRef.current = val;
+    setAutopilotWorkingState(val);
+  };
+
+  const [retryCount, setRetryCount] = useState<number>(0);
+  const retryCountRef = useRef(0);
+
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  const triggerAutopilotHealing = async (sessionId: string, currentLogs: string) => {
+    if (autopilotWorkingRef.current) return;
+    setAutopilotWorking(true);
+    setAiAnalyzing(true);
+    const attempt = retryCountRef.current + 1;
+    setAiSuggestions(`🤖 **Autopilot Triggered!**\n\nAttempting recovery run ${attempt}/3.\n\nAnalyzing crash log and files...`);
+
+    try {
+      const systemPrompt = `You are an automated self-healing debugger. Your goal is to inspect a crash log, identify the single source code file causing the failure, locate the exact lines that contain the bug, and provide a direct text replacement.
+      
+      You MUST respond with a JSON object in this exact format (do not wrap in markdown):
+      {
+        "explanation": "Brief explanation of the bug and fix",
+        "filePath": "src/filename.ts",
+        "targetContent": "the exact lines in the file to replace, with correct indentation and spacing",
+        "replacementContent": "the corrected lines of code to write in its place"
+      }`;
+
+      const prompt = `Command run: ${command}\n\nCrash Log Output:\n${currentLogs}\n\nPlease inspect the crash log, locate the error source file, and generate the JSON replacement.`;
+
+      const settingsString = localStorage.getItem("agent_settings");
+      const settings = settingsString ? JSON.parse(settingsString) : {};
+      const geminiModel = settings.geminiModel || "gemini-2.5-flash";
+      const clientApiKey = settings.geminiApiKey || "";
+
+      const payload = {
+        systemInstruction: {
+          role: "user",
+          parts: [{ text: systemPrompt }]
+        },
+        contents: [{
+          role: "user",
+          parts: [{ text: prompt }]
+        }]
+      };
+
+      const res = await fetch("/api/gemini/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: geminiModel,
+          payload,
+          clientApiKey
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to consult Gemini API");
+      }
+
+      const data = await res.json();
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      text = text.replace(/^```json\n/i, "").replace(/```$/, "").trim();
+      
+      let parsedFix;
+      try {
+        parsedFix = JSON.parse(text);
+      } catch (e) {
+        console.error("AI returned invalid JSON:", text);
+        throw new Error("AI did not return a valid JSON repair payload. Output: " + text);
+      }
+
+      if (!parsedFix.filePath || !parsedFix.targetContent || !parsedFix.replacementContent) {
+        throw new Error("AI repair payload is missing required fields (filePath, targetContent, replacementContent).");
+      }
+
+      setAiSuggestions(`🤖 **Autopilot Recovery (Attempt ${attempt}/3)**\n\n**Diagnosis:** ${parsedFix.explanation}\n\n**File to patch:** \`${parsedFix.filePath}\`\n\n**Applying patch...**`);
+
+      const replaceRes = await fetch("/api/fs/replace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          path: parsedFix.filePath,
+          targetContent: parsedFix.targetContent,
+          replacementContent: parsedFix.replacementContent
+        })
+      });
+
+      if (!replaceRes.ok) {
+        const errData = await replaceRes.json();
+        throw new Error(`Failed to apply patch: ${errData?.error || replaceRes.statusText}`);
+      }
+
+      const replaceData = await replaceRes.json();
+      if (!replaceData.success) {
+        throw new Error(`Failed to apply file replacement: ${replaceData.error || 'Unknown error'}`);
+      }
+
+      setAiSuggestions(`🤖 **Autopilot Recovery (Attempt ${attempt}/3)**\n\n**Diagnosis:** ${parsedFix.explanation}\n\n**Patch applied successfully to \`${parsedFix.filePath}\`!**\n\n**Restarting command \`${command}\`...**`);
+      
+      retryCountRef.current += 1;
+      setRetryCount(retryCountRef.current);
+
+      await new Promise(r => setTimeout(r, 2000));
+
+      setAiSuggestions("");
+      setAutopilotWorking(false);
+      setAiAnalyzing(false);
+      
+      handleStart(true);
+    } catch (e: any) {
+      setAiSuggestions(`🤖 **Autopilot Failed to Heal:** ${e.message}\n\nManual intervention required.`);
+      setAutopilotWorking(false);
+      setAiAnalyzing(false);
+    }
+  };
 
   const fetchSessions = async () => {
     try {
@@ -36,7 +163,6 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
         const data = await res.json();
         setSessions(data.sessions || []);
         if (data.sessions.length > 0 && !activeSessionId) {
-          // Auto select the first active or latest session
           setActiveSessionId(data.sessions[data.sessions.length - 1].id);
         }
       }
@@ -57,7 +183,6 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
         const data = await res.json();
         setLogs(data.logs || "");
         
-        // Update session status in local state
         setSessions((prev) =>
           prev.map((s) =>
             s.id === id ? { ...s, status: data.status, exitCode: data.exitCode } : s
@@ -77,21 +202,18 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
     fetchSessions();
   }, []);
 
-  // Poll logs if the active session is running
   const { subscribe } = useEventBus(workspaceId);
 
-  // Subscribe to debug logs and state changes via event bus
   useEffect(() => {
     if (!activeSessionId) return;
     
-    // Initial fetch
     getLogs(activeSessionId);
     
     const unsubscribe = subscribe('debug:log', (data) => {
       if (data && data.sessionId === activeSessionId) {
-        setLogs(data.logs || "");
+        const currentLogs = data.logs || "";
+        setLogs(currentLogs);
         
-        // Update session status in local state
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId ? { ...s, status: data.status, exitCode: data.exitCode } : s
@@ -101,21 +223,29 @@ export function DebuggerPanel({ workspaceId }: DebuggerPanelProps) {
         if (data.status) {
           setRunning(data.status === "running");
         }
+
+        const isFailed = data.status === "failed" || (data.status === "exited" && data.exitCode !== undefined && data.exitCode !== 0);
+        if (isFailed && autopilotRef.current && !autopilotWorkingRef.current && retryCountRef.current < 3) {
+          triggerAutopilotHealing(activeSessionId, currentLogs);
+        }
       }
     });
 
     return unsubscribe;
   }, [activeSessionId, subscribe]);
 
-  // Scroll to bottom when logs change
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  const handleStart = async () => {
+  const handleStart = async (isAutopilotRestart = false) => {
     if (!command.trim()) return;
     setLoading(true);
-    setAiSuggestions("");
+    if (!isAutopilotRestart) {
+      setAiSuggestions("");
+      retryCountRef.current = 0;
+      setRetryCount(0);
+    }
     try {
       const res = await fetch("/api/debug/start", {
         method: "POST",
@@ -223,6 +353,16 @@ Analyze the error. Explain:
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-[#181820] hover:bg-[#20202b] border border-white/5 rounded-lg select-none cursor-pointer transition-colors text-xs text-emerald-400 font-semibold mr-1">
+            <input
+              type="checkbox"
+              checked={autopilot}
+              onChange={(e) => setAutopilot(e.target.checked)}
+              className="accent-emerald-500 rounded cursor-pointer"
+            />
+            <BrainCircuit className="w-3.5 h-3.5" />
+            <span>Autopilot</span>
+          </label>
           <input
             type="text"
             value={command}
@@ -240,7 +380,7 @@ Analyze the error. Explain:
             </button>
           ) : (
             <button
-              onClick={handleStart}
+              onClick={() => handleStart(false)}
               disabled={loading || !command.trim()}
               className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-40"
             >

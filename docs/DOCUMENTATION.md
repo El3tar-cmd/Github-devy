@@ -125,6 +125,9 @@ Main development interface with multiple tabs and panels.
 - `package`: Package manager
 - `builder`: AI UI builder
 - `planner`: Project planning
+- `trajectory`: Agent trajectory visualizer showing step-by-step reasoning
+- `ast`: Code AST dependency network graph
+- `sandbox`: Third-party API mocking sandbox and webhook simulator
 
 ### Terminal Components
 
@@ -599,7 +602,7 @@ The application settings are managed through the Settings interface:
 ```typescript
 interface Settings {
   // AI Provider Selection
-  apiProvider: "ollama" | "gemini";
+  apiProvider: "ollama" | "gemini" | "lmstudio";
   
   // Ollama Configuration
   ollamaUrl: string;
@@ -608,6 +611,10 @@ interface Settings {
   // Gemini Configuration
   geminiApiKey: string;
   geminiModel: string;
+
+  // LM Studio Configuration
+  lmStudioUrl: string;
+  lmStudioModel: string;
   
   // GitHub Integration
   repoUrl: string;
@@ -617,6 +624,7 @@ interface Settings {
   systemPrompt: string;
   enableAutocomplete: boolean;
   planModeActive: boolean;
+  maxIterations: number;
 }
 ```
 

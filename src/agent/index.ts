@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { Settings } from "../types";
-import { fetchOllamaModels } from "../ollama";
+import { fetchOllamaModels, fetchLmStudioModels } from "../ollama";
 import { useAgentSessions } from "./useAgentSessions";
 import { runAgentLoop } from "./runAgentLoop";
 
@@ -38,12 +38,19 @@ export function useAgent(
   };
 
   const loadModels = useCallback(async () => {
-    if (!settings.ollamaUrl) return;
     setModelsError(null);
-    const { models: m, error } = await fetchOllamaModels(settings.ollamaUrl);
-    setModels(m);
-    if (error) setModelsError(error);
-  }, [settings.ollamaUrl]);
+    if (settings.apiProvider === "ollama") {
+      if (!settings.ollamaUrl) return;
+      const { models: m, error } = await fetchOllamaModels(settings.ollamaUrl);
+      setModels(m);
+      if (error) setModelsError(error);
+    } else if (settings.apiProvider === "lmstudio") {
+      if (!settings.lmStudioUrl) return;
+      const { models: m, error } = await fetchLmStudioModels(settings.lmStudioUrl);
+      setModels(m);
+      if (error) setModelsError(error);
+    }
+  }, [settings.apiProvider, settings.ollamaUrl, settings.lmStudioUrl]);
 
   const sendMessage = async (text: string) => {
     const userMsg = {

@@ -20,16 +20,19 @@ export interface ToolInvocation {
 }
 
 export interface Settings {
-  apiProvider: "ollama" | "gemini";
+  apiProvider: "ollama" | "gemini" | "lmstudio";
   ollamaUrl: string;
   ollamaModel: string;
   geminiApiKey: string;
   geminiModel: string;
+  lmStudioUrl: string;
+  lmStudioModel: string;
   repoUrl: string;
   githubToken: string;
   systemPrompt: string;
   enableAutocomplete: boolean;
   planModeActive: boolean;
+  maxIterations: number;
 }
 
 export const defaultSystemPrompt = `You are "Devy", an advanced, senior Autonomous AI Developer Agent operating in a sandboxed Workspace Environment.
@@ -90,6 +93,14 @@ You are designed to build, refactor, debug, and test code autonomously.
 6. HUMAN INTERACTION:
    - ask_human: Prompt the user for instructions, confirmation, API keys, or feedback. Use this when blocked.
 
+[AUTONOMOUS PLANNING & ROADMAPPING DIRECTIVE]
+- For any complex, multi-step, or architectural user request, you MUST evaluate if you need to establish a structured plan and task list:
+  1. Check if plan files ('.github-devy/plan.md' and/or '.github-devy/tasks.md') already exist in the workspace from a previous run.
+  2. If they do, read them, evaluate what is done/pending, and REWRITE/UPDATE them to incorporate the new user instructions. Do NOT blindly overwrite them if you want to keep previous context; rather, update them.
+  3. If they do not exist and the task is complex, CREATE them. Create '.github-devy/plan.md' describing the design/steps, and '.github-devy/tasks.md' containing checkbox tasks (- [ ] Task description).
+  4. Track your work step-by-step. Whenever you complete a task, edit '.github-devy/tasks.md' to mark it completed (change "- [ ]" to "- [x]").
+  5. Continue your agent loop execution until all checklist items are successfully completed. Do not end the conversation if there are uncompleted tasks.
+
 [WORKSPACE SPECIFICATIONS]
 - The workspace root is "./". Use relative paths.
 - Ignore dependency/system directories (e.g., 'node_modules', '.git', '.chromium-profile') when scanning folders or searching.
@@ -101,11 +112,14 @@ export const defaultSettings: Settings = {
   ollamaModel: "",
   geminiApiKey: "",
   geminiModel: "gemini-2.5-flash",
+  lmStudioUrl: "http://localhost:1234",
+  lmStudioModel: "",
   repoUrl: "",
   githubToken: "",
   systemPrompt: defaultSystemPrompt,
   enableAutocomplete: true,
   planModeActive: false,
+  maxIterations: 30,
 };
 
 export interface ChatSession {

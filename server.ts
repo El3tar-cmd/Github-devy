@@ -16,6 +16,8 @@ import dbRouter from './server/routes/db';
 import debugRouter from './server/routes/debug';
 import packageRouter from './server/routes/package';
 import ragRouter from './server/routes/rag';
+import astRouter from './server/routes/ast';
+import sandboxRouter from './server/routes/sandbox';
 
 
 // Import Websocket handlers
@@ -50,6 +52,8 @@ app.use('/api/db', dbRouter);
 app.use('/api/debug', debugRouter);
 app.use('/api/package', packageRouter);
 app.use('/api/rag', ragRouter);
+app.use('/api/ast', astRouter);
+app.use('/api/sandbox', sandboxRouter);
 
 
 // Setup Vite for Dev / Static files for Prod

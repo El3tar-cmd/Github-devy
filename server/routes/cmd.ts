@@ -27,10 +27,15 @@ router.post('/run', async (req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     
     let selectedShell: string | boolean = true;
-    if (existsSync('/bin/bash')) {
-      selectedShell = '/bin/bash';
-    } else if (existsSync('/bin/sh')) {
-      selectedShell = '/bin/sh';
+    if (process.platform !== 'win32') {
+      const envShell = process.env.SHELL || '';
+      if (envShell && existsSync(envShell)) {
+        selectedShell = envShell;
+      } else if (existsSync('/bin/bash')) {
+        selectedShell = '/bin/bash';
+      } else if (existsSync('/bin/sh')) {
+        selectedShell = '/bin/sh';
+      }
     }
 
     let isBackground = false;

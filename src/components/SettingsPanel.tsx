@@ -35,26 +35,34 @@ export function SettingsPanel({
 
       <div className="space-y-6">
         {/* API Provider Toggle */}
-        <div className="bg-[#15151a] p-1 rounded-xl flex items-center">
+        <div className="bg-[#15151a] p-1 rounded-xl flex items-center gap-1 border border-white/5">
           <button
             onClick={() => setSettings({ ...settings, apiProvider: 'ollama' })}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              settings.apiProvider === 'ollama' ? 'bg-[#34343d] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              settings.apiProvider === 'ollama' ? 'bg-[#34343d] text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'
             }`}
           >
             Ollama
           </button>
           <button
             onClick={() => setSettings({ ...settings, apiProvider: 'gemini' })}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              settings.apiProvider === 'gemini' ? 'bg-[#34343d] text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              settings.apiProvider === 'gemini' ? 'bg-[#34343d] text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            Gemini API
+            Gemini
+          </button>
+          <button
+            onClick={() => setSettings({ ...settings, apiProvider: 'lmstudio' })}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              settings.apiProvider === 'lmstudio' ? 'bg-[#34343d] text-emerald-400 shadow-sm' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            LM Studio
           </button>
         </div>
 
-        {settings.apiProvider === 'ollama' ? (
+        {settings.apiProvider === 'ollama' && (
           <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-400">Ollama URL</label>
@@ -89,7 +97,47 @@ export function SettingsPanel({
               {modelsError && <p className="text-rose-400 text-xs mt-1">{modelsError}</p>}
             </div>
           </div>
-        ) : (
+        )}
+
+        {settings.apiProvider === 'lmstudio' && (
+          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-400">LM Studio Server URL</label>
+              <div className="flex gap-2">
+                 <input
+                   className="w-full bg-[#2a2a32] text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all border border-transparent shadow-inner font-mono text-sm leading-tight"
+                   value={settings.lmStudioUrl}
+                   onChange={e => setSettings({ ...settings, lmStudioUrl: e.target.value })}
+                   placeholder="http://localhost:1234"
+                 />
+                 <button
+                   onClick={loadModels}
+                   className="p-3 bg-[#2a2a32] hover:bg-[#34343d] rounded-xl text-emerald-400 transition-colors shrink-0 flex items-center justify-center border border-transparent"
+                   title="Refresh Models"
+                 >
+                   <RefreshCw className="w-5 h-5" />
+                 </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
+                 <Box className="w-4 h-4" /> Local Model
+              </label>
+              <select
+                className="w-full bg-[#2a2a32] text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all appearance-none cursor-pointer"
+                value={settings.lmStudioModel}
+                onChange={e => setSettings({ ...settings, lmStudioModel: e.target.value })}
+              >
+                <option value="">Select a model...</option>
+                {models.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              {modelsError && <p className="text-rose-400 text-xs mt-1">{modelsError}</p>}
+            </div>
+          </div>
+        )}
+
+        {settings.apiProvider === 'gemini' && (
           <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-400 flex items-center gap-2">
@@ -168,6 +216,28 @@ export function SettingsPanel({
           >
             <div className={`w-4 h-4 bg-[#09090b] rounded-full absolute top-1 transition-all ${settings.enableAutocomplete ? "left-6" : "left-1"}`} />
           </button>
+        </div>
+
+        {/* Max Agent Steps (Iterations) */}
+        <div className="bg-[#15151a] p-4 rounded-xl border border-white/5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-white">Max Agent Steps</span>
+              <span className="text-[10px] text-slate-500">Max ReAct iterations per query</span>
+            </div>
+            <span className="text-xs font-mono font-bold text-emerald-400 bg-[#22222d] border border-white/10 px-2 py-0.5 rounded">
+              {settings.maxIterations || 30}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="10"
+            max="100"
+            step="5"
+            value={settings.maxIterations || 30}
+            onChange={e => setSettings({ ...settings, maxIterations: Number(e.target.value) })}
+            className="w-full h-1 bg-[#2a2a32] rounded-lg appearance-none cursor-pointer accent-emerald-500"
+          />
         </div>
 
         <hr className="border-white/10" />

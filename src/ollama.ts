@@ -18,6 +18,20 @@ export async function fetchOllamaModels(url: string) {
   }
 }
 
+export async function fetchLmStudioModels(url: string) {
+  try {
+    const res = await fetch(`${url.replace(/\/+$/, "")}/v1/models`);
+    if (!res.ok) throw new Error("Network response was not ok");
+    const data = await res.json();
+    return { models: data.data.map((m: any) => m.id), error: null };
+  } catch (error: any) {
+    return {
+      models: [],
+      error: "Failed to fetch LM Studio models (check if server is running and CORS is enabled)",
+    };
+  }
+}
+
 export async function executeToolCall(
   name: string,
   args: any,

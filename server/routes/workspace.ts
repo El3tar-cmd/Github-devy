@@ -186,7 +186,7 @@ router.post('/workspace/import-local-path', async (req, res) => {
 
     let resolvedPath = localPath;
     if (resolvedPath.startsWith('~')) {
-      const homeDir = process.env.HOME || '/data/data/com.termux/files/home';
+      const homeDir = process.env.HOME || process.env.USERPROFILE || '/data/data/com.termux/files/home';
       resolvedPath = path.join(homeDir, resolvedPath.slice(1));
     } else {
       resolvedPath = path.resolve(resolvedPath);
@@ -219,7 +219,7 @@ router.post('/workspace/list-local-dirs', async (req, res) => {
     const { localPath } = req.body;
     let targetPath = localPath;
 
-    const homeDir = process.env.HOME || '/data/data/com.termux/files/home';
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/data/data/com.termux/files/home';
 
     if (!targetPath) {
       targetPath = homeDir;
@@ -356,6 +356,19 @@ router.get('/workspaces', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
+});
+
+router.get('/environment/detect', (req, res) => {
+  res.json({
+    success: true,
+    platform: process.platform,
+    shell: process.env.SHELL || (process.platform === 'win32' ? 'cmd.exe' : '/bin/sh'),
+    isWindows: process.platform === 'win32',
+    isLinux: process.platform === 'linux',
+    isMac: process.platform === 'darwin',
+    nodeVersion: process.version,
+    cwd: process.cwd()
+  });
 });
 
 export default router;
