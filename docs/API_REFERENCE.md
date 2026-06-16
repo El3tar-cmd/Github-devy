@@ -979,6 +979,106 @@ Content-Type: application/json
 }
 ```
 
+### AST Dependency Graph Operations
+
+#### Get Codebase AST Graph
+
+Analyzes workspace files using the TypeScript Compiler API to return a nodes-and-links graph representation of file dependencies and top-level exported symbols.
+
+```http
+POST /api/ast/graph
+Content-Type: application/json
+
+{
+  "workspaceId": "my-workspace-id"
+}
+```
+
+**Response:**
+```json
+{
+  "nodes": [
+    { "id": "src/main.tsx", "label": "main.tsx", "type": "file" },
+    { "id": "src/App.tsx", "label": "App.tsx", "type": "file" }
+  ],
+  "links": [
+    { "source": "src/main.tsx", "target": "src/App.tsx", "symbols": ["App"] }
+  ]
+}
+```
+
+---
+
+### Third-Party API Sandbox Mocking
+
+Provides local, sandboxed implementations for Stripe, Twilio, and Auth0 APIs for error-free local verification and webhook testing.
+
+#### Stripe Payment Intents Mock
+
+```http
+POST /api/sandbox/stripe/v1/payment_intents
+Content-Type: application/json
+
+{
+  "amount": 2000,
+  "currency": "usd"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "pi_mock_12345",
+  "object": "payment_intent",
+  "amount": 2000,
+  "currency": "usd",
+  "status": "requires_payment_method"
+}
+```
+
+#### Get Sandbox Request Logs
+
+```http
+GET /api/sandbox/logs
+```
+
+**Response:**
+```json
+{
+  "logs": [
+    {
+      "id": "log_1718534092000",
+      "timestamp": "2026-06-16T12:00:00.000Z",
+      "method": "POST",
+      "path": "/stripe/v1/payment_intents",
+      "headers": { "content-type": "application/json" },
+      "body": { "amount": 2000, "currency": "usd" }
+    }
+  ]
+}
+```
+
+#### Trigger Webhook Event Simulator
+
+```http
+POST /api/sandbox/trigger-webhook
+Content-Type: application/json
+
+{
+  "url": "http://localhost:3000/webhooks/stripe",
+  "eventType": "payment_intent.succeeded"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Webhook dispatched successfully",
+  "status": 200
+}
+```
+
 ---
 
 ## WebSocket API
