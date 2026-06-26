@@ -24,7 +24,7 @@ import sandboxRouter from './server/routes/sandbox';
 import { setupWebSocketTerminal, cleanAllTerminalSessions } from './server/websocket/terminal';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '5000');
+const PORT = parseInt(process.env.PORT || '9876');
 let serverInstance: http.Server | null = null;
 const isProductionServer = process.env.NODE_ENV === 'production' || process.argv[1]?.endsWith(path.join('dist', 'server.cjs'));
 
