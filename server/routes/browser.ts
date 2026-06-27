@@ -2,6 +2,10 @@ import { Router, Request, Response, NextFunction, Express } from 'express';
 import http from 'http';
 import * as cheerio from 'cheerio';
 import { notifyBrowserPending } from '../websocket/events';
+import { safePath } from '../utils/workspace';
+import puppeteer from 'puppeteer-core';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
@@ -26,7 +30,9 @@ const isIdeRoute = (url: string) => {
          url.startsWith('/api/web') ||
          url.startsWith('/api/workspace') ||
          url.startsWith('/api/gemini') ||
-         url === '/api/workspaces';
+         url === '/api/workspaces' ||
+         url.startsWith('/docs/') ||
+         url === '/docs';
 };
 
 function rewriteHtmlForProxy(html: string, port: number): string {
@@ -111,8 +117,8 @@ function rewriteHtmlForProxy(html: string, port: number): string {
         } catch(e) {}
         
         // Fallback: if we couldn't virtualize Location, physically strip the prefix from the URL
-        // BEFORE any app framework reads window.location.pathname
-        if (!locationVirtualized) {
+        // BEFORE any app framework reads window.location.pathname (only inside the iframe wrapper)
+        if (!locationVirtualized && window.self !== window.top) {
           if (window.location.pathname.startsWith(proxyPrefixSlash) || window.location.pathname === proxyPrefix) {
             var cleanPath = window.location.pathname.substring(proxyPrefix.length) || '/';
             var cleanUrl = cleanPath + window.location.search + window.location.hash;
@@ -123,12 +129,8 @@ function rewriteHtmlForProxy(html: string, port: number): string {
         // === PHASE 2: Intercept History API ===
         var notifyParent = function() {
           try {
-            // Always report the REAL url (with proxy prefix) to parent for address bar sync
-            var realHref = window.location.origin + proxyPrefix + (locationVirtualized ? window.location.pathname : window.location.pathname) + window.location.search + window.location.hash;
-            if (!locationVirtualized) {
-              realHref = window.location.href; // already clean, but parent will figure it out
-            }
-            window.parent.postMessage({ type: 'PREVIEW_URL_CHANGED', url: window.location.href }, '*');
+            var realHref = window.location.origin + proxyPrefix + window.location.pathname + window.location.search + window.location.hash;
+            window.parent.postMessage({ type: 'PREVIEW_URL_CHANGED', url: realHref }, '*');
           } catch(e){}
         };
 
@@ -375,6 +377,8 @@ export function registerProxyRoutes(app: Express) {
           
           // Skip system-level paths and proxy-sw itself
           if (path.startsWith('/proxy/') || 
+              path.startsWith('/docs/') ||
+              path === '/docs' ||
               path === '/proxy-sw.js' || 
               path === '/favicon.ico') {
             return;
@@ -494,8 +498,15 @@ export function registerProxyRoutes(app: Express) {
   });
 }
 
+let lastStateUpdateTimestamp = 0;
+
 // APIs mounted at /api/browser
 router.post('/action', async (req, res) => {
+  const isBrowserActive = lastKnownBrowserState.active && (Date.now() - lastStateUpdateTimestamp < 5000);
+  if (!isBrowserActive) {
+    return res.status(400).json({ success: false, error: 'Web automation command failed: Sandbox Browser Preview is closed or inactive. Please open the "Preview" tab in the IDE UI first.' });
+  }
+
   const { type, selector, text, url } = req.body;
   const actionId = Math.random().toString(36).substring(7);
   const action: BrowserAction = { id: actionId, type, selector, text, url };
@@ -534,11 +545,73 @@ router.post('/result', (req, res) => {
 router.post('/state', (req, res) => {
   const { url, html, active } = req.body;
   lastKnownBrowserState = { url, html, active: !!active };
+  lastStateUpdateTimestamp = Date.now();
   res.json({ success: true });
 });
 
 router.get('/state', (req, res) => {
   res.json(lastKnownBrowserState);
+});
+
+router.post('/screenshot', async (req, res) => {
+  const { workspaceId } = req.body;
+  try {
+    let targetUrl = lastKnownBrowserState.url || 'http://localhost:5173/';
+     // Resolve relative proxy url if needed (matching anywhere in the URL)
+     const match = targetUrl.match(/\/proxy\/(\d+)(.*)/);
+     if (match) {
+       const port = match[1];
+       const subPath = match[2] || '/';
+       targetUrl = `http://localhost:${port}${subPath}`;
+     }
+
+    const browser = await puppeteer.launch({
+      executablePath: '/data/data/com.termux/files/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--headless'
+      ]
+    });
+
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
+    
+    // Navigate to target URL
+    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+    
+    // Wait for paint animations
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Resolve workspace folder path using safePath
+    const { wDir } = await safePath(workspaceId || '', '.');
+    const screenshotsDir = path.join(wDir, '.github-devy', 'screenshots');
+    if (!fs.existsSync(screenshotsDir)) {
+      fs.mkdirSync(screenshotsDir, { recursive: true });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `screenshot-${timestamp}.png`;
+    const outputPath = path.join(screenshotsDir, filename);
+
+    await page.screenshot({ path: outputPath, fullPage: false });
+    await browser.close();
+
+    const base64Data = fs.readFileSync(outputPath, { encoding: 'base64' });
+    const screenshotDataUrl = `data:image/png;base64,${base64Data}`;
+
+    res.json({
+      success: true,
+      path: `.github-devy/screenshots/${filename}`,
+      url: targetUrl,
+      screenshot: screenshotDataUrl
+    });
+  } catch (err: any) {
+    console.error('Puppeteer screenshot failed:', err);
+    res.status(500).json({ success: false, error: `Headless browser screenshot failed: ${err.message}` });
+  }
 });
 
 export default router;

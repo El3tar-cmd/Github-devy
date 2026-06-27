@@ -217,6 +217,10 @@ export async function executeToolCall(
       return await req("/api/browser/action", { type: "type", selector: args.selector, text: args.text });
     case "browser_get_state":
       return await req("/api/browser/action", { type: "get-html" });
+    case "browser_scroll":
+      return await req("/api/browser/action", { type: "scroll", direction: args.direction, selector: args.selector });
+    case "browser_keypress":
+      return await req("/api/browser/action", { type: "keypress", selector: args.selector, text: args.key });
     case "sequential_thinking":
       return { success: true, acknowledged_thought: args.thought };
     case "git_status":
@@ -332,110 +336,20 @@ export async function executeToolCall(
     }
     case "browser_screenshot": {
       try {
-        const iframe = document.getElementById("preview-iframe") as HTMLIFrameElement;
-        if (!iframe) {
-          return { error: "Sandbox Browser Preview viewport is closed. Open the 'Preview' tab in the IDE first." };
+        const res = await req("/api/browser/screenshot", { workspaceId });
+        if (res && res.success) {
+          return {
+            success: true,
+            message: `Screenshot captured via headless browser and saved to '${res.path}'.`,
+            path: res.path,
+            url: res.url,
+            screenshot: res.screenshot
+          };
+        } else {
+          return { error: res?.error || "Headless browser screenshot failed." };
         }
-
-        // Wait a moment for the page to fully paint
-        await new Promise<void>((resolve) => setTimeout(resolve, 800));
-
-        const iframeRect = iframe.getBoundingClientRect();
-        const width = Math.max(Math.floor(iframeRect.width) || iframe.clientWidth, 800);
-        const height = Math.max(Math.floor(iframeRect.height) || iframe.clientHeight, 600);
-
-        let dataUrl = "";
-        let method = "drawImage";
-
-        // Method 1: Native drawImage — fastest, works for same-origin proxy iframes
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("Could not get 2D canvas context");
-          // Type assertion for iframe as CanvasImageSource
-          ctx.drawImage(iframe as any, 0, 0, width, height);
-          const raw = canvas.toDataURL("image/png");
-          // Verify it's not blank (a blank canvas returns a very small base64 string)
-          if (raw && raw.length > 5000) {
-            dataUrl = raw;
-          } else {
-            throw new Error("drawImage produced a blank canvas");
-          }
-        } catch (drawErr: any) {
-          // Method 2: html2canvas injected into the iframe (fallback, loads from CDN)
-          method = "html2canvas";
-          const iframeWindow = iframe.contentWindow;
-          const iframeDoc = iframe.contentDocument || iframeWindow?.document;
-
-          if (!iframeWindow || !iframeDoc) {
-            return { error: `Screenshot failed: cannot access iframe content. Error from drawImage: ${drawErr.message}` };
-          }
-
-          const loadHtml2Canvas = () => new Promise<any>((resolve, reject) => {
-            if ((iframeWindow as any).html2canvas) {
-              resolve((iframeWindow as any).html2canvas);
-              return;
-            }
-            const script = iframeDoc.createElement("script");
-            // Try multiple CDN sources in order
-            const cdns = [
-              "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
-              "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
-            ];
-            let tried = 0;
-            const tryNext = () => {
-              if (tried >= cdns.length) { reject(new Error("All CDN sources for html2canvas failed")); return; }
-              script.src = cdns[tried++];
-              script.onload = () => resolve((iframeWindow as any).html2canvas);
-              script.onerror = tryNext;
-            };
-            tryNext();
-            (iframeDoc.head || iframeDoc.documentElement).appendChild(script);
-            setTimeout(() => {
-              if (!(iframeWindow as any).html2canvas) reject(new Error("html2canvas load timed out after 12s"));
-            }, 12000);
-          });
-
-          const html2canvas = await loadHtml2Canvas();
-          const target = iframeDoc.body || iframeDoc.documentElement;
-          const canvas = await html2canvas(target, {
-            useCORS: true, allowTaint: true, logging: false,
-            width, height, windowWidth: width, windowHeight: height,
-            scrollX: 0, scrollY: 0,
-          });
-          dataUrl = canvas.toDataURL("image/png");
-        }
-
-        const base64 = dataUrl.split(",")[1];
-        if (!base64 || base64.length < 1000) {
-          return { error: "Screenshot failed: captured image appears blank. Ensure the Preview tab is open and the page is fully rendered." };
-        }
-
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const screenshotPath = `.github-devy/screenshots/screenshot-${timestamp}.png`;
-
-        const writeResult = await req("/api/fs/write", {
-          path: screenshotPath,
-          content: base64,
-          encoding: "base64",
-        });
-
-        if (!writeResult?.success || !writeResult.bytesWritten) {
-          return { error: `Screenshot failed: PNG write returned ${writeResult?.bytesWritten || 0} bytes.` };
-        }
-
-        return {
-          success: true,
-          message: `Screenshot captured (${method}) and saved to '${screenshotPath}' (${writeResult.bytesWritten} bytes).`,
-          path: screenshotPath,
-          bytesWritten: writeResult.bytesWritten,
-          method,
-          screenshot: dataUrl,
-        };
       } catch (err: any) {
-        return { error: `Screenshot failed: ${err.message}` };
+        return { error: `Screenshot request failed: ${err.message}` };
       }
     }
     case "search_codebase_rag":
@@ -790,6 +704,13 @@ export async function executeToolCall(
     case "typescript_interface_check": {
       const safeArgs = args || {};
       return await req("/api/fs/ts-check", safeArgs);
+    }
+    case "get_dependency_graph": {
+      return await req("/api/ast/graph", {});
+    }
+    case "find_symbol_definition": {
+      const safeArgs = args || {};
+      return await req("/api/ast/find-symbol", safeArgs);
     }
     default:
       return { error: `Unknown tool: ${name}` };

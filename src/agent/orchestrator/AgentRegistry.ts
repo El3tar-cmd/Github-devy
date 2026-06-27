@@ -17,7 +17,8 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
     allowedTools: [
       "read_file", "read_file_lines", "list_directory_files",
       "search_content", "web_search", "web_browse", "sequential_thinking",
-      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check"
+      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 20,
   },
@@ -41,7 +42,8 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
       "multi_file_edit", "create_directory", "rename_path", "delete_path",
       "list_directory_files", "search_content", "run_command", "manage_packages",
       "sequential_thinking", "list_agent_tasks", "get_agent_task",
-      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check"
+      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 30,
   },
@@ -64,7 +66,8 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
     allowedTools: [
       "read_file", "read_file_lines", "list_directory_files",
       "search_content", "sequential_thinking",
-      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check"
+      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 15,
   },
@@ -88,9 +91,10 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
       "list_directory_files", "search_content", "run_command",
       "start_background_command", "debug_start", "debug_logs", "debug_kill",
       "debug_sessions", "list_active_processes", "kill_process",
-      "sequential_thinking", "browser_get_state",
+      "sequential_thinking", "browser_get_state", "browser_scroll", "browser_keypress",
       "list_agent_tasks", "get_agent_task", "cancel_agent_task",
-      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check"
+      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 25,
   },
@@ -112,7 +116,8 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
     allowedTools: [
       "read_file", "read_file_lines", "list_directory_files",
       "search_content", "write_file", "create_directory",
-      "sequential_thinking", "list_agent_tasks", "get_agent_task"
+      "sequential_thinking", "list_agent_tasks", "get_agent_task",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 12,
   },
@@ -134,7 +139,8 @@ export const AGENT_REGISTRY: Record<string, SubAgentDefinition> = {
       "read_file", "read_file_lines", "write_file", "replace_in_file",
       "multi_file_edit", "list_directory_files", "search_content",
       "run_command", "sequential_thinking",
-      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check"
+      "check_typescript_errors", "syntax_check", "eslint_check", "typescript_interface_check",
+      "get_dependency_graph", "find_symbol_definition"
     ],
     maxIterations: 20,
   },

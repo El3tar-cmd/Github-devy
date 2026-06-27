@@ -117,7 +117,7 @@ export function BrowserPreview() {
   const executeBrowserAction = (action: any) => {
     const iframe = iframeRef.current;
     if (!iframe) {
-      return { success: false, error: 'لم يتم العثور على عنصر الـ Iframe.' };
+      return { success: false, error: 'Iframe element not found.' };
     }
 
     try {
@@ -125,24 +125,24 @@ export function BrowserPreview() {
       const iframeDoc = iframe.contentDocument || iframeWindow?.document;
 
       if (!iframeDoc) {
-        return { success: false, error: 'غير قادر على الوصول إلى محتوى الـ Iframe. تأكد من أن الخادم يعمل بنفس أصل الصفحة.' };
+        return { success: false, error: 'Unable to access iframe content. Ensure the local dev server is running and same-origin proxy is active.' };
       }
 
       switch (action.type) {
         case 'click': {
           const el = iframeDoc.querySelector(action.selector);
           if (!el) {
-            return { success: false, error: `لم يتم العثور على أي عنصر بال_selector المحدد: ${action.selector}` };
+            return { success: false, error: `No element found matching selector: ${action.selector}` };
           }
           (el as HTMLElement).click();
           el.dispatchEvent(new Event('click', { bubbles: true }));
-          addLog(`🤖 نقر آلي على عنصر: "${action.selector}"`, 'success');
+          addLog(`🤖 Auto-clicked element: "${action.selector}"`, 'success');
           return { success: true, url: iframeWindow?.location.href || '', html: iframeDoc.documentElement.outerHTML };
         }
         case 'type': {
           const el = iframeDoc.querySelector(action.selector) as HTMLInputElement | HTMLTextAreaElement;
           if (!el) {
-            return { success: false, error: `لم يتم العثور على حقل الإدخال بال_selector: ${action.selector}` };
+            return { success: false, error: `No input/textarea element found matching selector: ${action.selector}` };
           }
           el.value = action.text || '';
           el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -151,30 +151,60 @@ export function BrowserPreview() {
           el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
           el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
           
-          addLog(`🤖 كتابة نص آلي: "${action.text}" في: "${action.selector}"`, 'success');
+          addLog(`🤖 Auto-typed text: "${action.text}" into element: "${action.selector}"`, 'success');
           return { success: true, url: iframeWindow?.location.href || '', html: iframeDoc.documentElement.outerHTML };
         }
         case 'navigate': {
           const resolved = parseUrl(action.url);
           setUrl(resolved);
           setInputUrl(action.url);
-          addLog(`🤖 توجيه آلي عبر وكيل الأتمتة إلى: ${resolved}`, 'info');
-          return { success: true, url: resolved, html: 'جاري التوجيه...' };
+          addLog(`🤖 Auto-navigated to: ${resolved}`, 'info');
+          return { success: true, url: resolved, html: 'Navigating...' };
         }
         case 'refresh': {
           setKey(k => k + 1);
-          addLog(`🤖 تحديث الصفحة آليًا`, 'info');
-          return { success: true, url: iframeWindow?.location.href || '', html: 'جاري تحديث الصفحة...' };
+          addLog(`🤖 Auto-refreshed page`, 'info');
+          return { success: true, url: iframeWindow?.location.href || '', html: 'Refreshing...' };
         }
         case 'get-html': {
-          addLog(`🤖 جلب نسخة من كود الـ HTML لاستكشاف الأخطاء`, 'success');
+          addLog(`🤖 Retrieved HTML source code copy`, 'success');
+          return { success: true, url: iframeWindow?.location.href || '', html: iframeDoc.documentElement.outerHTML };
+        }
+        case 'scroll': {
+          if (action.selector) {
+            const el = iframeDoc.querySelector(action.selector);
+            if (!el) {
+              return { success: false, error: `Element not found for selector: ${action.selector}` };
+            }
+            el.scrollIntoView({ behavior: 'smooth' });
+            addLog(`🤖 Scrolled to element: "${action.selector}"`, 'info');
+          } else if (action.direction === 'up' || action.text === 'up') {
+            iframeWindow?.scrollBy({ top: -400, behavior: 'smooth' });
+            addLog(`🤖 Scrolled viewport up`, 'info');
+          } else {
+            iframeWindow?.scrollBy({ top: 400, behavior: 'smooth' });
+            addLog(`🤖 Scrolled viewport down`, 'info');
+          }
+          return { success: true, url: iframeWindow?.location.href || '', html: iframeDoc.documentElement.outerHTML };
+        }
+        case 'keypress': {
+          const el = iframeDoc.querySelector(action.selector) as HTMLElement;
+          if (!el) {
+            return { success: false, error: `Element not found for selector: ${action.selector}` };
+          }
+          el.focus();
+          const targetKey = action.text || 'Enter';
+          el.dispatchEvent(new KeyboardEvent('keydown', { key: targetKey, bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keypress', { key: targetKey, bubbles: true }));
+          el.dispatchEvent(new KeyboardEvent('keyup', { key: targetKey, bubbles: true }));
+          addLog(`🤖 Sent keypress "${targetKey}" to element: "${action.selector}"`, 'success');
           return { success: true, url: iframeWindow?.location.href || '', html: iframeDoc.documentElement.outerHTML };
         }
         default:
-          return { success: false, error: `نوع الأكشن غير مدعوم: ${action.type}` };
+          return { success: false, error: `Unsupported action type: ${action.type}` };
       }
     } catch (err: any) {
-      return { success: false, error: `خطأ أثناء التنفيذ: ${err.message}` };
+      return { success: false, error: `Error during execution: ${err.message}` };
     }
   };
 
@@ -218,12 +248,64 @@ export function BrowserPreview() {
           const iframeWindow = iframe.contentWindow;
           const iframeDoc = iframe.contentDocument || iframeWindow?.document;
           if (iframeDoc) {
-            const currentIframeUrl = iframeWindow?.location.href || '';
+            // Tag interactive elements with IDs for browser agents
+            const selectables = iframeDoc.querySelectorAll('button, a, input, textarea, select, [role="button"], [onclick]');
+            let id = 1;
+            selectables.forEach((el) => {
+              if (!el.hasAttribute('data-devy-id')) {
+                el.setAttribute('data-devy-id', String(id));
+                const origTitle = el.getAttribute('title') || '';
+                if (!origTitle.startsWith('[ID:')) {
+                  el.setAttribute('title', `[ID: ${id}] ${origTitle}`);
+                }
+                
+                // Inject visual badge for styling overlay
+                try {
+                  const badge = iframeDoc.createElement('span');
+                  badge.innerText = String(id);
+                  badge.style.position = 'absolute';
+                  badge.style.top = '0px';
+                  badge.style.left = '0px';
+                  badge.style.backgroundColor = '#10b981';
+                  badge.style.color = '#000000';
+                  badge.style.fontSize = '8px';
+                  badge.style.fontWeight = 'bold';
+                  badge.style.padding = '0.5px 2.5px';
+                  badge.style.borderRadius = '2px';
+                  badge.style.zIndex = '9999';
+                  badge.style.pointerEvents = 'none';
+                  badge.style.opacity = '0.8';
+
+                  const htmlEl = el as HTMLElement;
+                  const tag = htmlEl.tagName.toLowerCase();
+                  if (tag !== 'input' && tag !== 'textarea' && tag !== 'select' && tag !== 'img') {
+                    if (htmlEl.style.position === '' || htmlEl.style.position === 'static') {
+                      htmlEl.style.position = 'relative';
+                    }
+                    htmlEl.appendChild(badge);
+                  } else {
+                    htmlEl.style.outline = '1px dashed #10b981';
+                  }
+                } catch (_) {}
+                id++;
+              }
+            });
+
+            let currentIframeUrl = iframeWindow?.location.href || '';
+            if (currentIframeUrl && !currentIframeUrl.includes('/proxy/') && url.includes('/proxy/')) {
+              const match = url.match(/\/proxy\/(\d+)(.*)/);
+              if (match) {
+                const port = match[1];
+                const sub = match[2] || '/';
+                currentIframeUrl = `${window.location.origin}/proxy/${port}${sub}`;
+              }
+            }
+
             fetch('/api/browser/state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                url: currentIframeUrl || url,
+                url: deparseUrl(currentIframeUrl) || url,
                 html: iframeDoc.documentElement.outerHTML,
                 active: true
               })
@@ -272,7 +354,16 @@ export function BrowserPreview() {
         const iframeWindow = iframe.contentWindow;
         const iframeDoc = iframe.contentDocument || iframeWindow?.document;
         if (iframeWindow && iframeDoc) {
-          const currentIframeUrl = iframeWindow.location.href;
+          let currentIframeUrl = iframeWindow.location.href;
+          if (currentIframeUrl && !currentIframeUrl.includes('/proxy/') && url.includes('/proxy/')) {
+            const match = url.match(/\/proxy\/(\d+)(.*)/);
+            if (match) {
+              const port = match[1];
+              const sub = match[2] || '/';
+              currentIframeUrl = `${window.location.origin}/proxy/${port}${sub}`;
+            }
+          }
+
           if (currentIframeUrl && !isInputFocused) {
             const mapped = deparseUrl(currentIframeUrl);
             setInputUrl(mapped);

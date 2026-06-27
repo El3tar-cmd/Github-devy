@@ -286,6 +286,48 @@ export const TOOLS_SCHEMA = [
   {
     type: "function",
     function: {
+      name: "browser_scroll",
+      description: "Scroll the local Sandbox Browser Preview. You can scroll 'down', 'up', or scroll to make a specific CSS selector visible.",
+      parameters: {
+        type: "object",
+        properties: {
+          direction: {
+            type: "string",
+            enum: ["down", "up"],
+            description: "Scroll direction. Defaults to 'down'."
+          },
+          selector: {
+            type: "string",
+            description: "Optional CSS selector to scroll directly to."
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "browser_keypress",
+      description: "Simulate a specific keyboard keypress (like 'Enter', 'Tab', 'Backspace', 'ArrowDown') on a focused DOM element inside the Sandbox Browser Preview.",
+      parameters: {
+        type: "object",
+        properties: {
+          selector: {
+            type: "string",
+            description: "The CSS selector of the target element to focus and send key events to."
+          },
+          key: {
+            type: "string",
+            description: "The key name to press (e.g., 'Enter', 'Tab', 'Backspace', 'Escape', 'ArrowRight', 'ArrowDown')."
+          }
+        },
+        required: ["selector", "key"]
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "git_status",
       description: "Get status of the Git repository in the workspace (modified, untracked, added, deleted files)",
       parameters: { type: "object", properties: {} }
@@ -1081,6 +1123,34 @@ export const TOOLS_SCHEMA = [
             description: "Report type usage issues like 'any' and type assertions. Defaults to true."
           }
         }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_dependency_graph",
+      description: "Retrieve the complete codebase dependency graph, showing import links between files and top-level code symbols declared in each file. Extremely useful for understanding project architecture, relationships, and workspace dependencies before modifying code.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_symbol_definition",
+      description: "Find the declaration location (file path and line range) of a code symbol (class, interface, type, function, or variable) by searching TypeScript/JavaScript files in the workspace.",
+      parameters: {
+        type: "object",
+        properties: {
+          symbolName: {
+            type: "string",
+            description: "The name of the class, interface, function, or variable to find."
+          }
+        },
+        required: ["symbolName"]
       }
     }
   },

@@ -557,4 +557,19 @@ router.post('/push-self', async (req, res) => {
   }
 });
 
+router.post('/revert', async (req, res) => {
+  try {
+    const { workspaceId, commitHash } = req.body;
+    if (!workspaceId || !commitHash) {
+      return res.status(400).json({ error: 'workspaceId and commitHash are required' });
+    }
+    const { wDir } = await safePath(workspaceId, '.');
+    const git = simpleGit(wDir);
+    await git.reset(['--hard', commitHash]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

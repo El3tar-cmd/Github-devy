@@ -236,4 +236,86 @@ router.post('/graph', async (req, res) => {
   }
 });
 
+router.post('/find-symbol', async (req, res) => {
+  try {
+    const { workspaceId, symbolName } = req.body;
+    if (!workspaceId || !symbolName) {
+      return res.status(400).json({ error: 'workspaceId and symbolName are required' });
+    }
+
+    const { wDir } = await safePath(workspaceId, '.');
+    const resolvedWDir = path.resolve(wDir);
+    const allFiles = traverseDirectory(resolvedWDir, resolvedWDir);
+    
+    for (const fileAbsPath of allFiles) {
+      const relPath = path.relative(resolvedWDir, fileAbsPath).replace(/\\/g, '/');
+      const content = fs.readFileSync(fileAbsPath, 'utf8');
+      const isTs = fileAbsPath.endsWith('.ts') || fileAbsPath.endsWith('.tsx');
+      
+      const sourceFile = ts.createSourceFile(
+        relPath,
+        content,
+        ts.ScriptTarget.Latest,
+        true,
+        isTs ? ts.ScriptKind.TSX : ts.ScriptKind.JSX
+      );
+
+      let result: any = null;
+
+      const visit = (node: ts.Node) => {
+        if (result) return;
+        
+        let matches = false;
+        let type = '';
+
+        if (ts.isClassDeclaration(node) && node.name && node.name.text === symbolName) {
+          matches = true;
+          type = 'class';
+        } else if (ts.isInterfaceDeclaration(node) && node.name && node.name.text === symbolName) {
+          matches = true;
+          type = 'interface';
+        } else if (ts.isTypeAliasDeclaration(node) && node.name && node.name.text === symbolName) {
+          matches = true;
+          type = 'type';
+        } else if (ts.isFunctionDeclaration(node) && node.name && node.name.text === symbolName) {
+          matches = true;
+          type = 'function';
+        } else if (ts.isVariableStatement(node)) {
+          for (const decl of node.declarationList.declarations) {
+            if (ts.isIdentifier(decl.name) && decl.name.text === symbolName) {
+              matches = true;
+              type = 'variable';
+              break;
+            }
+          }
+        }
+
+        if (matches) {
+          const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+          result = {
+            filePath: relPath,
+            symbolName,
+            type,
+            startLine: start.line + 1,
+            endLine: end.line + 1,
+          };
+          return;
+        }
+
+        ts.forEachChild(node, visit);
+      };
+
+      visit(sourceFile);
+      if (result) {
+        return res.json({ success: true, ...result });
+      }
+    }
+
+    res.status(404).json({ success: false, error: `Symbol '${symbolName}' not found in workspace.` });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

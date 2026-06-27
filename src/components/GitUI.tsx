@@ -46,9 +46,61 @@ export function GitUI({ workspaceId, onOpenFile, onRefreshWorkspace }: Props) {
     }
   };
 
+  interface Commit {
+    hash: string;
+    author: string;
+    date: string;
+    message: string;
+  }
+  const [history, setHistory] = useState<Commit[]>([]);
+
+  const fetchGitHistory = async () => {
+    try {
+      const res = await fetch('/api/git/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, limit: 15 })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setHistory(data.history || []);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     fetchGitStatus();
+    fetchGitHistory();
   }, [workspaceId]);
+
+  const handleRevert = async (commitHash: string) => {
+    if (!window.confirm(`هل أنت متأكد من رغبتك في إعادة المشروع بأكمله إلى النقطة المحفوظة: ${commitHash}؟ سيتم حذف أي تغييرات غير محفوظة.`)) return;
+    setActionLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch('/api/git/revert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId, commitHash })
+      });
+      if (res.ok) {
+        setSuccessMsg(`تم استرجاع المشروع بنجاح إلى Commit: ${commitHash}`);
+        fetchGitStatus();
+        fetchGitHistory();
+        onRefreshWorkspace();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'فشل استرجاع الحالة');
+      }
+    } catch (err: any) {
+      setError(`خطأ: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const handleInitRepo = async () => {
     setActionLoading(true);
@@ -90,6 +142,7 @@ export function GitUI({ workspaceId, onOpenFile, onRefreshWorkspace }: Props) {
         setCommitMessage('');
         setSuccessMsg('تم حفظ التغييرات وعمل Commit بنجاح!');
         fetchGitStatus();
+        fetchGitHistory();
         onRefreshWorkspace();
       } else {
         setError(data.error || 'فشل تنفيذ Commit');
@@ -283,8 +336,7 @@ export function GitUI({ workspaceId, onOpenFile, onRefreshWorkspace }: Props) {
                 </div>
               )}
             </div>
-
-            {/* Commit Form (Sticky at bottom) */}
+            {/* Commit Form */}
             {files.length > 0 && (
               <form onSubmit={handleCommit} className="space-y-2 pt-2 border-t border-white/5 shrink-0">
                 <input
@@ -306,6 +358,54 @@ export function GitUI({ workspaceId, onOpenFile, onRefreshWorkspace }: Props) {
                 </button>
               </form>
             )}
+
+            {/* Checkpoints & History List */}
+            <div className="flex-1 overflow-y-auto border border-white/5 rounded-xl bg-[#08080b]/40 p-1.5 min-h-[180px] space-y-1.5 flex flex-col">
+              <div className="text-[10px] text-slate-500 font-semibold px-2 py-1 uppercase tracking-wider flex items-center justify-between shrink-0">
+                <span>تاريخ التغييرات والـ Checkpoints ({history.length})</span>
+                <button 
+                  onClick={fetchGitHistory} 
+                  disabled={loading}
+                  className="text-slate-500 hover:text-white"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              {history.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500 font-sans leading-relaxed flex-1 flex items-center justify-center">
+                  لا توجد نقاط حفظ سابقة.
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                  {history.map(commit => {
+                    const isCheckpoint = commit.message.includes("Devy Checkpoint");
+                    return (
+                      <div 
+                        key={commit.hash} 
+                        className={`p-2 rounded-lg border text-xs text-slate-300 transition-all duration-200 flex items-center justify-between gap-3 ${
+                          isCheckpoint ? 'bg-emerald-500/5 border-emerald-500/10 hover:border-emerald-500/20' : 'bg-[#101014]/40 border-white/5 hover:border-white/10'
+                        }`}
+                      >
+                        <div className="overflow-hidden space-y-0.5 text-left flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-mono px-1 py-0.2 bg-white/5 rounded text-slate-400 font-bold shrink-0">{commit.hash}</span>
+                            <span className="text-[9px] text-slate-500 font-mono truncate">{commit.date}</span>
+                          </div>
+                          <span className="text-[11px] block text-white truncate font-medium">{commit.message}</span>
+                        </div>
+                        <button
+                          onClick={() => handleRevert(commit.hash)}
+                          disabled={actionLoading}
+                          className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[9px] rounded-lg font-sans transition-colors shrink-0 disabled:opacity-50"
+                        >
+                          تراجع
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

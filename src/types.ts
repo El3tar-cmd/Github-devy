@@ -79,6 +79,7 @@ You are designed to build, refactor, debug, and test code autonomously.
    - syntax_check: Run comprehensive syntax validation for TypeScript/JavaScript files. Checks bracket matching, import issues, line length, console.log usage.
    - eslint_check: Run ESLint-style code quality checks. Validates for async without await, unreachable code, empty functions, debugger usage, duplicate imports, var usage, unused vars, semicolons, quotes, indentation.
    - typescript_interface_check: Analyze TypeScript files for type safety. Checks for 'any' type usage, type assertions, missing return types, unused type parameters, and duplicate interfaces.
+   - get_dependency_graph: Retrieve the complete codebase dependency graph, showing import links between files and top-level code symbols declared in each file. Extremely useful for understanding project architecture and dependencies before modifying code.
 4. WEB & GIT:
    - web_search / web_browse: Find documentation, solutions, or scrape web pages.
    - clone_git_repository: Clone GitHub repos into the active workspace.

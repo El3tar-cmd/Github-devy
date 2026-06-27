@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import fs from 'fs/promises';
 import path from 'path';
-import { spawn } from 'child_process';
+import ts from 'typescript';
+import { spawn, execSync } from 'child_process';
 import { safePath, getWorkspaceDir } from '../utils/workspace';
 import { notifyFsChanged } from '../websocket/events';
 
@@ -41,10 +42,59 @@ router.post('/read-lines', async (req, res) => {
 });
 
 
+function validateSyntax(filePath: string, content: string): { success: boolean; error?: string } {
+  const ext = path.extname(filePath).toLowerCase();
+  if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+    const isTs = ext.endsWith('.ts') || ext.endsWith('.tsx');
+    const sourceFile = ts.createSourceFile(
+      path.basename(filePath),
+      content,
+      ts.ScriptTarget.Latest,
+      true,
+      isTs ? ts.ScriptKind.TSX : ts.ScriptKind.JSX
+    );
+    const diagnostics = (sourceFile as any).parseDiagnostics || [];
+    if (diagnostics.length > 0) {
+      const firstError = diagnostics[0];
+      const message = typeof firstError.messageText === 'string'
+        ? firstError.messageText
+        : ts.flattenDiagnosticMessageText(firstError.messageText, '\n');
+      const { line } = sourceFile.getLineAndCharacterOfPosition(firstError.start);
+      return {
+        success: false,
+        error: `Syntax validation failed for ${path.basename(filePath)}:\n${message} at line ${line + 1}`
+      };
+    }
+  }
+  return { success: true };
+}
+
+function saveCheckpoint(wDir: string, filePath: string) {
+  try {
+    const relPath = path.relative(wDir, filePath).replace(/\\/g, '/');
+    execSync('git rev-parse --is-inside-work-tree', { cwd: wDir, stdio: 'ignore' });
+    execSync(`git add "${relPath}"`, { cwd: wDir, stdio: 'ignore' });
+    const hasChanges = execSync('git diff --cached --name-only', { cwd: wDir }).toString().trim();
+    if (hasChanges) {
+      execSync(`git commit -m "🔧 Devy Checkpoint: Updated ${relPath}"`, { cwd: wDir, stdio: 'ignore' });
+    }
+  } catch (e) {
+    // Ignore git errors (e.g. no git repo initialized)
+  }
+}
+
 router.post('/write', async (req, res) => {
   try {
     const { path: filePath, content, workspaceId, encoding } = req.body;
-    const { resolved } = await safePath(workspaceId, filePath);
+    const { resolved, wDir } = await safePath(workspaceId, filePath);
+
+    if (encoding !== 'base64') {
+      const validation = validateSyntax(resolved, content || '');
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error });
+      }
+    }
+
     await fs.mkdir(path.dirname(resolved), { recursive: true });
     let bytesWritten = 0;
     if (encoding === 'base64') {
@@ -57,6 +107,7 @@ router.post('/write', async (req, res) => {
       bytesWritten = Buffer.byteLength(text, 'utf8');
     }
     notifyFsChanged(workspaceId);
+    saveCheckpoint(wDir, resolved);
     res.json({ success: true, bytesWritten });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -66,14 +117,21 @@ router.post('/write', async (req, res) => {
 router.post('/replace', async (req, res) => {
   try {
     const { path: filePath, search, replace, workspaceId } = req.body;
-    const { resolved } = await safePath(workspaceId, filePath);
+    const { resolved, wDir } = await safePath(workspaceId, filePath);
     let content = await fs.readFile(resolved, 'utf8');
     if (!content.includes(search)) {
       return res.status(400).json({ error: 'Search string not found in file.' });
     }
-    content = content.replace(search, replace);
-    await fs.writeFile(resolved, content, 'utf8');
+    const newContent = content.replace(search, replace);
+    
+    const validation = validateSyntax(resolved, newContent);
+    if (!validation.success) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    await fs.writeFile(resolved, newContent, 'utf8');
     notifyFsChanged(workspaceId);
+    saveCheckpoint(wDir, resolved);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
