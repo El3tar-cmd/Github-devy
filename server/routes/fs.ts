@@ -239,4 +239,68 @@ router.post('/list', async (req, res) => {
   }
 });
 
+router.post('/check-types', async (req, res) => {
+  try {
+    const { workspaceId } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+
+    const tsconfigPath = path.join(wDir, 'tsconfig.json');
+    const hasTsConfig = await fs.access(tsconfigPath).then(() => true).catch(() => false);
+    if (!hasTsConfig) {
+      return res.json({
+        success: true,
+        hasTypeScript: false,
+        message: 'No tsconfig.json found — TypeScript not configured in this workspace',
+      });
+    }
+
+    await new Promise<void>((resolve) => {
+      const child = spawn('npx', ['tsc', '--noEmit', '--pretty', 'false'], {
+        cwd: wDir,
+        env: { ...process.env },
+        shell: true,
+      });
+
+      let output = '';
+      child.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        res.json({ error: 'TypeScript check timed out after 30s' });
+        resolve();
+      }, 30000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        const lines = output.split('\n').filter(Boolean);
+        const errors = lines.filter(l => /error TS\d+/i.test(l));
+        const warnings = lines.filter(l => /warning TS\d+/i.test(l));
+        res.json({
+          success: code === 0,
+          hasTypeScript: true,
+          exitCode: code,
+          errorCount: errors.length,
+          warningCount: warnings.length,
+          errors: errors.slice(0, 60),
+          warnings: warnings.slice(0, 20),
+          summary: code === 0
+            ? '✅ No TypeScript errors found.'
+            : `❌ ${errors.length} TypeScript error(s) found.`,
+          rawOutput: output.slice(0, 12000),
+        });
+        resolve();
+      });
+
+      child.on('error', (err: Error) => {
+        clearTimeout(timer);
+        res.status(500).json({ error: err.message });
+        resolve();
+      });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

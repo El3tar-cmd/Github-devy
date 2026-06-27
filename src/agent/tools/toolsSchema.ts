@@ -996,4 +996,15 @@ export const TOOLS_SCHEMA = [
       }
     }
   },
+  {
+    type: "function",
+    function: {
+      name: "check_typescript_errors",
+      description: "Run TypeScript type checking (tsc --noEmit) on the workspace and return all type errors. Always use this BEFORE claiming a TypeScript project compiles or works correctly — do NOT assume the project is error-free without running this. Also call this after making edits to TypeScript files to verify no regressions.",
+      parameters: {
+        type: "object",
+        properties: {}
+      }
+    }
+  },
 ];

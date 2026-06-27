@@ -332,250 +332,84 @@ export async function executeToolCall(
     }
     case "browser_screenshot": {
       try {
-        const loadHtml2Canvas = (targetWindow: Window, targetDocument: Document) => {
-          return new Promise<any>((resolve, reject) => {
-            if ((targetWindow as any).html2canvas) {
-              resolve((targetWindow as any).html2canvas);
-              return;
-            }
-            const script = targetDocument.createElement("script");
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-            script.onload = () => resolve((targetWindow as any).html2canvas);
-            script.onerror = () => reject(new Error("Unable to load html2canvas screenshot library."));
-            (targetDocument.head || targetDocument.documentElement).appendChild(script);
-            setTimeout(() => {
-              if (!(targetWindow as any).html2canvas) {
-                reject(new Error("Timed out loading html2canvas screenshot library."));
-              }
-            }, 10000);
-          });
-        };
         const iframe = document.getElementById("preview-iframe") as HTMLIFrameElement;
         if (!iframe) {
           return { error: "Sandbox Browser Preview viewport is closed. Open the 'Preview' tab in the IDE first." };
         }
-        const iframeWindow = iframe.contentWindow;
-        const iframeDoc = iframe.contentDocument || iframeWindow?.document;
-        if (!iframeWindow || !iframeDoc || !iframeDoc.body) {
-          return { error: "Unable to read Sandbox Browser iframe body document contents." };
-        }
 
-        const html2canvas = await loadHtml2Canvas(iframeWindow, iframeDoc);
-        if (!html2canvas) {
-          return { error: "Screenshot failed: html2canvas screenshot library is unavailable in the preview iframe." };
-        }
+        // Wait a moment for the page to fully paint
+        await new Promise<void>((resolve) => setTimeout(resolve, 800));
 
-        const waitForPreviewPaint = async () => {
-          if (iframeDoc.readyState !== "complete") {
-            await new Promise<void>((resolve) => {
-              iframeWindow?.addEventListener("load", () => resolve(), { once: true });
-              setTimeout(resolve, 3000);
-            });
-          }
-
-          try {
-            await Promise.race([
-              iframeDoc.fonts?.ready,
-              new Promise((resolve) => setTimeout(resolve, 1500)),
-            ]);
-          } catch (e) {}
-
-          const images = Array.from(iframeDoc.images || []);
-          await Promise.race([
-            Promise.all(images.map((img) => {
-              if (img.complete) return Promise.resolve();
-              return new Promise<void>((resolve) => {
-                img.addEventListener("load", () => resolve(), { once: true });
-                img.addEventListener("error", () => resolve(), { once: true });
-              });
-            })),
-            new Promise((resolve) => setTimeout(resolve, 2500)),
-          ]);
-
-          await new Promise<void>((resolve) => iframeWindow?.requestAnimationFrame(() => resolve()) || resolve());
-          await new Promise<void>((resolve) => iframeWindow?.requestAnimationFrame(() => resolve()) || resolve());
-        };
-
-        await waitForPreviewPaint();
-
-        const target = iframeDoc.body || iframeDoc.documentElement;
         const iframeRect = iframe.getBoundingClientRect();
-        const body = iframeDoc.body;
-        const viewportWidth = Math.max(
-          Math.floor(iframeRect.width),
-          iframe.clientWidth,
-          iframeWindow?.innerWidth || 0,
-          target.clientWidth || 0,
-          body.clientWidth || 0,
-          target.scrollWidth || 0,
-          body.scrollWidth || 0,
-          1280,
-        );
-        const viewportHeight = Math.max(
-          Math.floor(iframeRect.height),
-          iframe.clientHeight,
-          iframeWindow?.innerHeight || 0,
-          target.clientHeight || 0,
-          body.clientHeight || 0,
-          720,
-        );
-        const width = viewportWidth;
-        const height = viewportHeight;
+        const width = Math.max(Math.floor(iframeRect.width) || iframe.clientWidth, 800);
+        const height = Math.max(Math.floor(iframeRect.height) || iframe.clientHeight, 600);
 
-        const isGradientCaptureError = (err: any) => {
-          const message = String(err?.message || err || "");
-          return message.includes("addColorStop") ||
-            message.includes("CanvasGradient") ||
-            message.includes("non-finite");
-        };
+        let dataUrl = "";
+        let method = "drawImage";
 
-        const disableCssGradients = (clonedDoc: Document) => {
-          const clonedWindow = clonedDoc.defaultView;
-          const elements = Array.from(clonedDoc.querySelectorAll<HTMLElement>("*"));
-          for (const element of elements) {
-            const style = clonedWindow?.getComputedStyle(element);
-            const backgroundImage = style?.backgroundImage || element.style.backgroundImage;
-            const borderImageSource = style?.borderImageSource || element.style.borderImageSource;
-            const listStyleImage = style?.listStyleImage || element.style.listStyleImage;
-            const maskImage = style?.maskImage || element.style.maskImage;
-            const webkitMaskImage = style?.getPropertyValue("-webkit-mask-image") || element.style.getPropertyValue("-webkit-mask-image");
-
-            if (backgroundImage.includes("gradient(")) {
-              element.style.backgroundImage = "none";
-            }
-            if (borderImageSource.includes("gradient(")) {
-              element.style.borderImageSource = "none";
-            }
-            if (listStyleImage.includes("gradient(")) {
-              element.style.listStyleImage = "none";
-            }
-            if (maskImage.includes("gradient(")) {
-              element.style.maskImage = "none";
-            }
-            if (webkitMaskImage.includes("gradient(")) {
-              element.style.setProperty("-webkit-mask-image", "none");
-            }
-          }
-        };
-
-        const screenshotOptions = {
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          width,
-          height,
-          windowWidth: width,
-          windowHeight: height,
-          scrollX: 0,
-          scrollY: 0,
-        };
-
-        const isLowDetailCanvas = (candidate: HTMLCanvasElement) => {
-          try {
-            const context = candidate.getContext("2d");
-            if (!context || !candidate.width || !candidate.height) return true;
-
-            const sampleWidth = Math.min(candidate.width, 80);
-            const sampleHeight = Math.min(candidate.height, 80);
-            const sampleCanvas = iframeDoc.createElement("canvas");
-            sampleCanvas.width = sampleWidth;
-            sampleCanvas.height = sampleHeight;
-            const sampleContext = sampleCanvas.getContext("2d");
-            if (!sampleContext) return false;
-
-            sampleContext.drawImage(candidate, 0, 0, sampleWidth, sampleHeight);
-            const pixels = sampleContext.getImageData(0, 0, sampleWidth, sampleHeight).data;
-            const colors = new Set<string>();
-            let totalDiff = 0;
-            let lastR = pixels[0] || 0;
-            let lastG = pixels[1] || 0;
-            let lastB = pixels[2] || 0;
-
-            for (let i = 0; i < pixels.length; i += 4) {
-              const r = pixels[i] || 0;
-              const g = pixels[i + 1] || 0;
-              const b = pixels[i + 2] || 0;
-              colors.add(`${r >> 4},${g >> 4},${b >> 4}`);
-              totalDiff += Math.abs(r - lastR) + Math.abs(g - lastG) + Math.abs(b - lastB);
-              lastR = r;
-              lastG = g;
-              lastB = b;
-              if (colors.size > 8 && totalDiff > 1200) {
-                return false;
-              }
-            }
-
-            return colors.size <= 4 || totalDiff <= 1200;
-          } catch (e) {
-            return false;
-          }
-        };
-
-        let usedGradientFallback = false;
-        let usedForeignObjectFallback = false;
-        let usedLowDetailFallback = false;
-        let canvas: HTMLCanvasElement;
+        // Method 1: Native drawImage — fastest, works for same-origin proxy iframes
         try {
-          canvas = await html2canvas(target, screenshotOptions);
-        } catch (err: any) {
-          if (!isGradientCaptureError(err)) {
-            throw err;
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Could not get 2D canvas context");
+          ctx.drawImage(iframe, 0, 0, width, height);
+          const raw = canvas.toDataURL("image/png");
+          // Verify it's not blank (a blank canvas returns a very small base64 string)
+          if (raw && raw.length > 5000) {
+            dataUrl = raw;
+          } else {
+            throw new Error("drawImage produced a blank canvas");
+          }
+        } catch (drawErr: any) {
+          // Method 2: html2canvas injected into the iframe (fallback, loads from CDN)
+          method = "html2canvas";
+          const iframeWindow = iframe.contentWindow;
+          const iframeDoc = iframe.contentDocument || iframeWindow?.document;
+
+          if (!iframeWindow || !iframeDoc) {
+            return { error: `Screenshot failed: cannot access iframe content. Error from drawImage: ${drawErr.message}` };
           }
 
-          try {
-            usedForeignObjectFallback = true;
-            canvas = await html2canvas(target, {
-              ...screenshotOptions,
-              foreignObjectRendering: true,
-            });
-          } catch (foreignObjectErr: any) {
-            if (!isGradientCaptureError(foreignObjectErr)) {
-              throw foreignObjectErr;
+          const loadHtml2Canvas = () => new Promise<any>((resolve, reject) => {
+            if ((iframeWindow as any).html2canvas) {
+              resolve((iframeWindow as any).html2canvas);
+              return;
             }
+            const script = iframeDoc.createElement("script");
+            // Try multiple CDN sources in order
+            const cdns = [
+              "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
+            ];
+            let tried = 0;
+            const tryNext = () => {
+              if (tried >= cdns.length) { reject(new Error("All CDN sources for html2canvas failed")); return; }
+              script.src = cdns[tried++];
+              script.onload = () => resolve((iframeWindow as any).html2canvas);
+              script.onerror = tryNext;
+            };
+            tryNext();
+            (iframeDoc.head || iframeDoc.documentElement).appendChild(script);
+            setTimeout(() => {
+              if (!(iframeWindow as any).html2canvas) reject(new Error("html2canvas load timed out after 12s"));
+            }, 12000);
+          });
 
-            usedGradientFallback = true;
-            canvas = await html2canvas(target, {
-              ...screenshotOptions,
-              onclone: disableCssGradients,
-            });
-          }
+          const html2canvas = await loadHtml2Canvas();
+          const target = iframeDoc.body || iframeDoc.documentElement;
+          const canvas = await html2canvas(target, {
+            useCORS: true, allowTaint: true, logging: false,
+            width, height, windowWidth: width, windowHeight: height,
+            scrollX: 0, scrollY: 0,
+          });
+          dataUrl = canvas.toDataURL("image/png");
         }
 
-        if (isLowDetailCanvas(canvas)) {
-          usedLowDetailFallback = true;
-          const alternateTarget = iframeDoc.documentElement || target;
-          try {
-            canvas = await html2canvas(alternateTarget, {
-              ...screenshotOptions,
-              foreignObjectRendering: true,
-            });
-            usedForeignObjectFallback = true;
-          } catch (err: any) {
-            if (!isGradientCaptureError(err)) {
-              throw err;
-            }
-
-            usedGradientFallback = true;
-            canvas = await html2canvas(alternateTarget, {
-              ...screenshotOptions,
-              onclone: disableCssGradients,
-            });
-          }
-        }
-
-        if (isLowDetailCanvas(canvas)) {
-          return {
-            error: "Screenshot failed: capture completed but appears blank or near-solid. Open the Preview tab and wait for the app content to render, then try again.",
-          };
-        }
-
-        const dataUrl = canvas.toDataURL("image/png");
         const base64 = dataUrl.split(",")[1];
-
-        if (!dataUrl.startsWith("data:image/png;base64,") || !base64) {
-          return {
-            error: "Screenshot failed: Browser capture produced an empty PNG. Make sure the Preview tab is visible and the page has finished rendering.",
-          };
+        if (!base64 || base64.length < 1000) {
+          return { error: "Screenshot failed: captured image appears blank. Ensure the Preview tab is open and the page is fully rendered." };
         }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -588,19 +422,15 @@ export async function executeToolCall(
         });
 
         if (!writeResult?.success || !writeResult.bytesWritten) {
-          return {
-            error: `Screenshot failed: PNG write returned ${writeResult?.bytesWritten || 0} bytes.`,
-          };
+          return { error: `Screenshot failed: PNG write returned ${writeResult?.bytesWritten || 0} bytes.` };
         }
 
         return {
           success: true,
-          message: `Screenshot successfully captured and saved to '${screenshotPath}' in the workspace (${writeResult.bytesWritten} bytes).${usedLowDetailFallback ? " Retried capture after the first image looked blank." : ""}${usedForeignObjectFallback ? " Used browser foreignObject rendering after html2canvas could not render a CSS gradient." : ""}${usedGradientFallback ? " CSS gradients were disabled in the capture fallback because html2canvas could not render one of them." : ""}`,
+          message: `Screenshot captured (${method}) and saved to '${screenshotPath}' (${writeResult.bytesWritten} bytes).`,
           path: screenshotPath,
           bytesWritten: writeResult.bytesWritten,
-          gradientFallback: usedGradientFallback,
-          foreignObjectFallback: usedForeignObjectFallback,
-          lowDetailFallback: usedLowDetailFallback,
+          method,
           screenshot: dataUrl,
         };
       } catch (err: any) {
@@ -944,6 +774,9 @@ export async function executeToolCall(
 
       taskManager.update(task.id, { status: "cancelled", progress: "Cancelled" });
       return { success: true, task: taskManager.get(task.id) };
+    }
+    case "check_typescript_errors": {
+      return await req("/api/fs/check-types", { workspaceId });
     }
     default:
       return { error: `Unknown tool: ${name}` };
