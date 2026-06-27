@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "node tools/platform_test.js"
+    "test": "node tools/platform_test.js",
+    "syntax-check": "node tools/syntax-check.js",
+    "eslint-check": "node tools/eslint-check.js",
+    "ts-check": "node tools/ts-check.js",
+    "check-all": "npm run syntax-check && npm run eslint-check && npm run ts-check"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

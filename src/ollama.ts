@@ -354,7 +354,8 @@ export async function executeToolCall(
           canvas.height = height;
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("Could not get 2D canvas context");
-          ctx.drawImage(iframe, 0, 0, width, height);
+          // Type assertion for iframe as CanvasImageSource
+          ctx.drawImage(iframe as any, 0, 0, width, height);
           const raw = canvas.toDataURL("image/png");
           // Verify it's not blank (a blank canvas returns a very small base64 string)
           if (raw && raw.length > 5000) {
@@ -777,6 +778,18 @@ export async function executeToolCall(
     }
     case "check_typescript_errors": {
       return await req("/api/fs/check-types", { workspaceId });
+    }
+    case "syntax_check": {
+      const safeArgs = args || {};
+      return await req("/api/fs/syntax-check", safeArgs);
+    }
+    case "eslint_check": {
+      const safeArgs = args || {};
+      return await req("/api/fs/eslint-check", safeArgs);
+    }
+    case "typescript_interface_check": {
+      const safeArgs = args || {};
+      return await req("/api/fs/ts-check", safeArgs);
     }
     default:
       return { error: `Unknown tool: ${name}` };

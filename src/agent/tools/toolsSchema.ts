@@ -1007,4 +1007,81 @@ export const TOOLS_SCHEMA = [
       }
     }
   },
+  {
+    type: "function",
+    function: {
+      name: "syntax_check",
+      description: "Run comprehensive syntax validation for TypeScript, JavaScript files in the workspace. Checks for basic syntax errors, bracket matching, import issues, and code style problems. Returns detailed error and warning reports with line numbers.",
+      parameters: {
+        type: "object",
+        properties: {
+          directories: {
+            type: "array",
+            description: "Array of directories to check. Defaults to ['src', 'server', 'tools']",
+            items: { type: "string" }
+          },
+          extensions: {
+            type: "array",
+            description: "File extensions to check. Defaults to ['.ts', '.tsx', '.js', '.jsx']",
+            items: { type: "string" }
+          },
+          strict: {
+            type: "boolean",
+            description: "Enable strict checking mode. Defaults to false."
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "eslint_check",
+      description: "Run ESLint-style code quality checks using regex pattern matching. Validates code for potential bugs, syntax errors, and style issues including: no-async-func-without-await, no-unreachable-code, no-empty-function, no-debugger, no-duplicate-imports, no-var, prefer-const, no-unused-vars, semicolons, quotes, indentation, and more.",
+      parameters: {
+        type: "object",
+        properties: {
+          directories: {
+            type: "array",
+            description: "Array of directories to check. Defaults to ['src', 'server', 'tools']",
+            items: { type: "string" }
+          },
+          severity: {
+            type: "string",
+            enum: ["all", "error", "warning", "style"],
+            description: "Filter issues by severity level. Defaults to 'all'."
+          },
+          fixableOnly: {
+            type: "boolean",
+            description: "Show only fixable issues. Defaults to false."
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
+      name: "typescript_interface_check",
+      description: "Analyze TypeScript files for type safety and interface consistency. Checks for: 'any' type usage, type assertions, missing return types, unused type parameters, duplicate interfaces, and interfaces with identical members. Returns detailed reports on type definitions and potential improvements.",
+      parameters: {
+        type: "object",
+        properties: {
+          directories: {
+            type: "array",
+            description: "Array of directories to check. Defaults to ['src', 'server', 'tools']",
+            items: { type: "string" }
+          },
+          checkConsistency: {
+            type: "boolean",
+            description: "Check for duplicate or similar interfaces. Defaults to true."
+          },
+          reportTypeUsage: {
+            type: "boolean",
+            description: "Report type usage issues like 'any' and type assertions. Defaults to true."
+          }
+        }
+      }
+    }
+  },
 ];

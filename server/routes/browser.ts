@@ -58,67 +58,150 @@ function rewriteHtmlForProxy(html: string, port: number): string {
     <!-- DEV_SITE_PROXY HELPER -->
     <script id="proxy-client-helper">
       (function() {
-        const notifyParent = () => {
+        const proxyPrefix = '/proxy/${port}';
+        const proxyPrefixSlash = proxyPrefix + '/';
+
+        // === PHASE 1: Virtualize Location reading ===
+        // Strip proxy prefix from pathname so routing libraries (React Router, Vue Router, etc.)
+        // see clean paths like '/' instead of '/proxy/8000/'
+        // 
+        // We attempt to override Location.prototype getters. If the browser marks them
+        // non-configurable, we fall back to history.replaceState which physically changes the URL.
+        
+        var locationVirtualized = false;
+        
+        try {
+          var hrefProp = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+          var pathProp = Object.getOwnPropertyDescriptor(Location.prototype, 'pathname');
+          
+          if (hrefProp && hrefProp.configurable && pathProp && pathProp.configurable) {
+            var origHrefGet = hrefProp.get;
+            var origPathGet = pathProp.get;
+            
+            // Virtualize pathname
+            Object.defineProperty(Location.prototype, 'pathname', {
+              get: function() {
+                var p = origPathGet.call(this);
+                if (p.startsWith(proxyPrefixSlash)) return p.substring(proxyPrefix.length) || '/';
+                if (p === proxyPrefix) return '/';
+                return p;
+              },
+              configurable: true
+            });
+
+            // Virtualize href
+            Object.defineProperty(Location.prototype, 'href', {
+              get: function() {
+                var h = origHrefGet.call(this);
+                return h.replace(proxyPrefix, '');
+              },
+              set: function(val) {
+                // Setting href navigates, add prefix for absolute paths
+                if (typeof val === 'string' && val.startsWith('/') && !val.startsWith(proxyPrefix)) {
+                  window.location = proxyPrefix + val;
+                } else {
+                  window.location = val;
+                }
+              },
+              configurable: true
+            });
+            
+            locationVirtualized = true;
+          }
+        } catch(e) {}
+        
+        // Fallback: if we couldn't virtualize Location, physically strip the prefix from the URL
+        // BEFORE any app framework reads window.location.pathname
+        if (!locationVirtualized) {
+          if (window.location.pathname.startsWith(proxyPrefixSlash) || window.location.pathname === proxyPrefix) {
+            var cleanPath = window.location.pathname.substring(proxyPrefix.length) || '/';
+            var cleanUrl = cleanPath + window.location.search + window.location.hash;
+            history.replaceState(history.state, '', cleanUrl);
+          }
+        }
+
+        // === PHASE 2: Intercept History API ===
+        var notifyParent = function() {
           try {
+            // Always report the REAL url (with proxy prefix) to parent for address bar sync
+            var realHref = window.location.origin + proxyPrefix + (locationVirtualized ? window.location.pathname : window.location.pathname) + window.location.search + window.location.hash;
+            if (!locationVirtualized) {
+              realHref = window.location.href; // already clean, but parent will figure it out
+            }
             window.parent.postMessage({ type: 'PREVIEW_URL_CHANGED', url: window.location.href }, '*');
           } catch(e){}
         };
 
-        // Notify on initial load
         notifyParent();
-
         window.addEventListener('popstate', notifyParent);
         window.addEventListener('hashchange', notifyParent);
 
-        // Intercept client-side routing state changes
-        const originalPushState = history.pushState;
-        const originalReplaceState = history.replaceState;
+        var originalPushState = history.pushState;
+        var originalReplaceState = history.replaceState;
         
-        history.pushState = function(state, unused, url) {
-          if (url && typeof url === 'string') {
-            if (url.startsWith('/') && !url.startsWith('/proxy/')) {
-              url = '/proxy/${port}' + url;
+        if (locationVirtualized) {
+          // Location getters are virtualized, so the REAL URL must keep the proxy prefix
+          history.pushState = function(state, unused, url) {
+            if (url && typeof url === 'string') {
+              if (url.startsWith('/') && !url.startsWith('/proxy/')) {
+                url = proxyPrefix + url;
+              }
             }
-          }
-          const res = originalPushState.call(history, state, unused, url);
-          notifyParent();
-          return res;
-        };
-        
-        history.replaceState = function(state, unused, url) {
-          if (url && typeof url === 'string') {
-            if (url.startsWith('/') && !url.startsWith('/proxy/')) {
-              url = '/proxy/${port}' + url;
+            var res = originalPushState.call(history, state, unused, url);
+            notifyParent();
+            return res;
+          };
+          
+          history.replaceState = function(state, unused, url) {
+            if (url && typeof url === 'string') {
+              if (url.startsWith('/') && !url.startsWith('/proxy/')) {
+                url = proxyPrefix + url;
+              }
             }
-          }
-          const res = originalReplaceState.call(history, state, unused, url);
-          notifyParent();
-          return res;
-        };
+            var res = originalReplaceState.call(history, state, unused, url);
+            notifyParent();
+            return res;
+          };
+        } else {
+          // Location is NOT virtualized — URLs are already clean (prefix was stripped).
+          // Do NOT re-add the prefix. Let the server middleware handle routing via cookie.
+          history.pushState = function(state, unused, url) {
+            var res = originalPushState.call(history, state, unused, url);
+            notifyParent();
+            return res;
+          };
+          
+          history.replaceState = function(state, unused, url) {
+            var res = originalReplaceState.call(history, state, unused, url);
+            notifyParent();
+            return res;
+          };
+        }
 
-        // Intercept XMLHttpRequest
-        const originalOpen = XMLHttpRequest.prototype.open;
-        XMLHttpRequest.prototype.open = function(method, url, ...args) {
+        // === PHASE 3: Intercept Network APIs ===
+        // Always add proxy prefix to fetch/XHR so API calls route correctly
+        
+        var originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url) {
           if (typeof url === 'string' && url.startsWith('/') && !url.startsWith('/proxy/')) {
-            url = '/proxy/${port}' + url;
+            url = proxyPrefix + url;
           }
-          return originalOpen.call(this, method, url, ...args);
+          return originalOpen.apply(this, arguments);
         };
 
-        // Intercept Fetch API calls
-        const originalFetch = window.fetch;
+        var originalFetch = window.fetch;
         window.fetch = function(input, init) {
           if (typeof input === 'string') {
             if (input.startsWith('/') && !input.startsWith('/proxy/')) {
-              input = '/proxy/${port}' + input;
+              input = proxyPrefix + input;
             }
           } else if (input instanceof Request) {
-            const url = input.url;
-            const origin = window.location.origin;
+            var url = input.url;
+            var origin = window.location.origin;
             if (url.startsWith(origin) && !url.includes('/proxy/')) {
-              const path = url.substring(origin.length);
+              var path = url.substring(origin.length);
               if (path.startsWith('/') && !path.startsWith('/proxy/')) {
-                const newUrl = origin + '/proxy/${port}' + path;
+                var newUrl = origin + proxyPrefix + path;
                 input = new Request(newUrl, input);
               }
             }
@@ -126,7 +209,24 @@ function rewriteHtmlForProxy(html: string, port: number): string {
           return originalFetch.call(window, input, init);
         };
 
-        // Register Service Worker for robust absolute asset proxying
+        // Intercept Location.assign / Location.replace for programmatic navigations
+        var origAssign = Location.prototype.assign;
+        Location.prototype.assign = function(url) {
+          if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(proxyPrefix)) {
+            return origAssign.call(this, proxyPrefix + url);
+          }
+          return origAssign.call(this, url);
+        };
+
+        var origLocReplace = Location.prototype.replace;
+        Location.prototype.replace = function(url) {
+          if (typeof url === 'string' && url.startsWith('/') && !url.startsWith(proxyPrefix)) {
+            return origLocReplace.call(this, proxyPrefix + url);
+          }
+          return origLocReplace.call(this, url);
+        };
+
+        // === PHASE 4: Service Worker ===
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register('/proxy-sw.js', { scope: '/proxy/' }).then(function(reg) {
             console.log('Service Worker registered with scope:', reg.scope);
@@ -186,7 +286,17 @@ export function relativeAssetProxyCatcher(req: Request, res: Response, next: Nex
                        req.url.includes('vite.svg');
     
     const hasReferer = !!referer;
-    if (!isIdeAsset && (!hasReferer || refererHasProxy || (referer && referer.includes('/src/')))) {
+    const isFromProxy = refererHasProxy || (referer && (
+      referer.includes('/src/') ||
+      referer.includes('/node_modules/') ||
+      referer.includes('/@id/') ||
+      referer.includes('/@vite/') ||
+      referer.includes('/@fs/') ||
+      referer.includes('/@react-refresh') ||
+      referer.includes('/proxy/')
+    ));
+
+    if (isFromProxy || (!isIdeAsset && !hasReferer)) {
       const match = req.headers.cookie.match(/last_proxy_port=(\d+)/);
       if (match) {
         portStr = match[1];

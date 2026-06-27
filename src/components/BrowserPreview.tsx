@@ -100,8 +100,10 @@ export function BrowserPreview() {
   const handleGo = (e: React.FormEvent) => {
     e.preventDefault();
     const resolved = parseUrl(inputUrl);
+    console.log('[BrowserPreview] URL resolved:', resolved, 'inputUrl:', inputUrl);
     setUrl(resolved);
-    addLog(`تم التوجيه يدويًا إلى: ${resolved}`, 'info');
+    setKey(k => k + 1); // Force iframe reload when URL changes
+    addLog(`جاري التحميل: ${window.location.origin}${resolved}`, 'info');
   };
 
   const addLog = (msg: string, type: 'info' | 'success' | 'err' = 'info') => {
@@ -384,7 +386,15 @@ export function BrowserPreview() {
                 key={key}
                 id="preview-iframe"
                 src={url}
-                onLoad={handleIframeLoad}
+                onLoad={() => {
+                  handleIframeLoad();
+                  console.log('[BrowserPreview] iframe loaded successfully');
+                }}
+                onLoadCapture={() => console.log('[BrowserPreview] iframe load event (capture)')}
+                onError={(e) => {
+                  console.error('[BrowserPreview] iframe error:', e);
+                  addLog(`❌ خطأ في تحميل الـ iframe: ${url}`, 'err');
+                }}
                 className="w-full h-full border-none bg-white font-sans text-slate-900"
                 title="Sandbox Browser Preview"
               />

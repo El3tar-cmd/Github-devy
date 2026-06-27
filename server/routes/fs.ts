@@ -303,4 +303,148 @@ router.post('/check-types', async (req, res) => {
   }
 });
 
+router.post('/syntax-check', async (req, res) => {
+  try {
+    const { workspaceId, directories, extensions, strict } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+
+    const dirs = directories || ['src', 'server', 'tools'];
+    const scriptPath = path.join(process.cwd(), 'tools', 'syntax-check.js');
+
+    await new Promise<void>((resolve) => {
+      const child = spawn('node', [
+        scriptPath,
+        ...dirs,
+        ...(strict ? ['--strict'] : [])
+      ], {
+        cwd: wDir,
+        env: { ...process.env },
+        shell: true,
+      });
+
+      let output = '';
+      child.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        res.json({ error: 'Syntax check timed out after 30s' });
+        resolve();
+      }, 30000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        res.json({ success: code === 0, output });
+        resolve();
+      });
+
+      child.on('error', (err: Error) => {
+        clearTimeout(timer);
+        res.status(500).json({ error: err.message });
+        resolve();
+      });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/eslint-check', async (req, res) => {
+  try {
+    const { workspaceId, directories, severity, fixableOnly } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+
+    const dirs = directories || ['src', 'server', 'tools'];
+    const sev = severity || 'all';
+    const scriptPath = path.join(process.cwd(), 'tools', 'eslint-check.js');
+
+    await new Promise<void>((resolve) => {
+      const child = spawn('node', [
+        scriptPath,
+        ...dirs,
+        '--severity',
+        sev,
+        ...(fixableOnly ? ['--fixable-only'] : [])
+      ], {
+        cwd: wDir,
+        env: { ...process.env },
+        shell: true,
+      });
+
+      let output = '';
+      child.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        res.json({ error: 'ESLint check timed out after 30s' });
+        resolve();
+      }, 30000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        res.json({ success: code === 0, output });
+        resolve();
+      });
+
+      child.on('error', (err: Error) => {
+        clearTimeout(timer);
+        res.status(500).json({ error: err.message });
+        resolve();
+      });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/ts-check', async (req, res) => {
+  try {
+    const { workspaceId, directories, checkConsistency, reportTypeUsage } = req.body;
+    const { wDir } = await safePath(workspaceId, '.');
+
+    const dirs = directories || ['src', 'server', 'tools'];
+    const consistency = checkConsistency !== false;
+    const typeUsage = reportTypeUsage !== false;
+    const scriptPath = path.join(process.cwd(), 'tools', 'ts-check.js');
+
+    await new Promise<void>((resolve) => {
+      const child = spawn('node', [
+        scriptPath,
+        ...dirs,
+        ...(!consistency ? ['--no-consistency'] : []),
+        ...(!typeUsage ? ['--no-type-usage'] : [])
+      ], {
+        cwd: wDir,
+        env: { ...process.env },
+        shell: true,
+      });
+
+      let output = '';
+      child.stdout?.on('data', (d: Buffer) => { output += d.toString(); });
+      child.stderr?.on('data', (d: Buffer) => { output += d.toString(); });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        res.json({ error: 'TypeScript check timed out after 30s' });
+        resolve();
+      }, 30000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        res.json({ success: code === 0, output });
+        resolve();
+      });
+
+      child.on('error', (err: Error) => {
+        clearTimeout(timer);
+        res.status(500).json({ error: err.message });
+        resolve();
+      });
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
