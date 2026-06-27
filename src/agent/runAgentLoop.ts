@@ -42,21 +42,28 @@ function sanitizeMessagesForLLM(msgs: ChatMessage[]): ChatMessage[] {
   return msgs.map((m) => {
     if (m.toolInvocations) {
       const sanitizedInvs = m.toolInvocations.map((inv) => {
+        let result = inv.result;
         if (inv.name === "browser_screenshot" && inv.result) {
           try {
             const parsed = JSON.parse(inv.result);
             if (parsed.screenshot) {
               parsed.screenshot = "[IMAGE DATA DETACHED - VIEW NATIVELY IN IDE CHAT VIEW]";
-              return {
-                ...inv,
-                result: JSON.stringify(parsed)
-              };
+              result = JSON.stringify(parsed);
             }
           } catch (e) {
             // fallback
           }
         }
-        return inv;
+        
+        // Truncate oversized tool results to prevent context overflow (conserve tokens)
+        if (result && result.length > 4000) {
+          result = result.slice(0, 4000) + "\n...[truncated for context]";
+        }
+        
+        return {
+          ...inv,
+          result
+        };
       });
       return {
         ...m,
