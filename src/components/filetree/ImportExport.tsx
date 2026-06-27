@@ -125,17 +125,28 @@ export function useImportExport(
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // Derive workspace ID from folder name (first segment of webkitRelativePath)
     let targetWorkspaceId = workspaceId;
+    const firstFile = Array.from(files)[0];
+    const relPath = (firstFile as any)?.webkitRelativePath as string | undefined;
+    if (relPath) {
+      const folderName = relPath.split('/')[0];
+      if (folderName) {
+        targetWorkspaceId = folderName.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      }
+    }
+
     if (!targetWorkspaceId) {
-      const name = prompt("من فضلك أدخل اسماً للمشروع الجديد لرفع المجلد إليه:", "my-project");
+      const name = prompt("من فضلك أدخل اسماً للمشروع:", "my-project");
       if (!name || !name.trim()) {
         if (e.target) e.target.value = '';
         return;
       }
       targetWorkspaceId = name.trim().replace(/[^a-zA-Z0-9_.-]/g, "_");
-      if (onWorkspaceIdChange) {
-        onWorkspaceIdChange(targetWorkspaceId);
-      }
+    }
+
+    if (targetWorkspaceId !== workspaceId && onWorkspaceIdChange) {
+      onWorkspaceIdChange(targetWorkspaceId);
     }
 
     setIsImporting(true);
@@ -228,6 +239,10 @@ export function useImportExport(
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Derive workspace ID from ZIP filename (strip .zip extension)
+    const rawName = file.name.replace(/\.zip$/i, '').trim();
+    const newWorkspaceId = rawName.replace(/[^a-zA-Z0-9_.-]/g, '_') || 'imported-project';
+
     setIsImporting(true);
     setErrorMsg('');
 
@@ -249,7 +264,7 @@ export function useImportExport(
       const response = await fetch('/api/workspace/import-zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId, zipBase64 }),
+        body: JSON.stringify({ workspaceId: newWorkspaceId, zipBase64 }),
       });
 
       if (!response.ok) {
@@ -257,10 +272,13 @@ export function useImportExport(
         throw new Error(errData.error || `HTTP error ${response.status}`);
       }
 
-      onRefresh();
-      if (e.target) {
-        e.target.value = '';
+      // Switch to the newly imported workspace
+      if (onWorkspaceIdChange) {
+        onWorkspaceIdChange(newWorkspaceId);
       }
+
+      onRefresh();
+      if (e.target) e.target.value = '';
     } catch (err: any) {
       console.error('Import ZIP failed:', err);
       setErrorMsg(`فشل استيراد مشروع الـ ZIP: ${err.message}`);

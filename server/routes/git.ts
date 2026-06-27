@@ -512,4 +512,49 @@ router.post('/actions/download-artifact', async (req, res) => {
   }
 });
 
+// Push the IDE's own project repo (not a workspace) to GitHub using a token
+router.post('/push-self', async (req, res) => {
+  try {
+    const { token, message } = req.body;
+    const projectDir = process.cwd();
+    const git = simpleGit(projectDir);
+
+    // Ensure git identity is set
+    const cfg = await git.listConfig();
+    if (!cfg.values['.git/config']?.['user.email'] && !cfg.values['global']?.['user.email']) {
+      await git.addConfig('user.email', 'devy@github-devy.local');
+      await git.addConfig('user.name', 'Github-devy');
+    }
+
+    // Stage all changes
+    await git.add('-A');
+
+    // Commit (ignore "nothing to commit" errors)
+    try {
+      await git.commit(message || 'Update from Github-devy');
+    } catch (e: any) {
+      if (!e.message?.includes('nothing to commit') && !e.message?.includes('nothing added')) {
+        throw e;
+      }
+    }
+
+    // Get remote and inject token if provided
+    const remotes = await git.getRemotes(true);
+    const origin = remotes.find((r: any) => r.name === 'origin');
+    if (!origin) return res.status(400).json({ error: 'No origin remote found' });
+
+    let pushUrl = (origin.refs as any).push || (origin.refs as any).fetch || '';
+    if (token && pushUrl.includes('github.com')) {
+      pushUrl = pushUrl.replace(/https:\/\/(.*@)?github\.com/, `https://${token}@github.com`);
+      await git.raw(['push', pushUrl, 'HEAD']);
+    } else {
+      await git.push();
+    }
+
+    res.json({ success: true, message: 'Pushed successfully to GitHub' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

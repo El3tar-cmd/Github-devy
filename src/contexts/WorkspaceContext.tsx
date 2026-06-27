@@ -33,11 +33,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const saved = localStorage.getItem("active_workspace_id");
       if (saved) return saved;
     }
-    const res = Math.random().toString(36).substring(7);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("active_workspace_id", res);
-    }
-    return res;
+    // No random ID — auto-select logic will pick first available workspace
+    return "";
   });
 
   const setWorkspaceId = (id: string) => {

@@ -9,6 +9,7 @@ import { AgentProvider, useAgentContext } from "./contexts/AgentContext";
 import { SidebarLayout } from "./components/layout/SidebarLayout";
 import { ChatLayout } from "./components/layout/ChatLayout";
 import { IdeLayout } from "./components/layout/IdeLayout";
+import { ToastContainer } from "./components/ToastContainer";
 
 function MainApp() {
   const {
@@ -29,7 +30,7 @@ function MainApp() {
 
   const [activeTab, setActiveTab] = useState<"chat" | "ide">("chat");
   const [ideTab, setIdeTab] = useState<
-    "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner" | "trajectory" | "ast" | "sandbox"
+    "editor" | "browser" | "terminal" | "search" | "git" | "db" | "debugger" | "package" | "builder" | "planner" | "trajectory" | "ast" | "sandbox" | "agents"
   >("editor");
 
   const [askHumanQuestion, setAskHumanQuestion] = useState<string | null>(null);
@@ -197,6 +198,7 @@ export default function App() {
     <WorkspaceProvider>
       <AgentProvider>
         <MainApp />
+        <ToastContainer />
       </AgentProvider>
     </WorkspaceProvider>
   );
