@@ -262,6 +262,10 @@ router.post('/workspace/import-zip', async (req, res) => {
       return res.status(400).json({ error: 'zipBase64 is required' });
     }
 
+    // Ensure workspace dir exists before trying to read it
+    const rawDir = getWorkspaceDir(workspaceId);
+    await fs.mkdir(rawDir, { recursive: true });
+
     const { wDir } = await safePath(workspaceId, '.');
 
     const zipBuffer = Buffer.from(zipBase64, 'base64');
@@ -321,7 +325,7 @@ router.post('/workspace/import-zip', async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: 'Project imported successfully' });
+    res.json({ success: true, workspaceId, message: 'Project imported successfully' });
   } catch (error: any) {
     console.error('Error importing ZIP:', error);
     res.status(500).json({ error: error.message });
